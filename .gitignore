@@ -23,3 +23,6 @@ Thumbs.db
 
 # Local tooling state
 .claude/
+
+# Generated data dumps (regenerate via server/db/export-mssql-to-json.js)
+server/db/export/

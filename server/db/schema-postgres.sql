@@ -1,0 +1,119 @@
+-- Mezmurify Supabase (Postgres) schema.
+-- Run with: node db/apply-schema.js
+
+create extension if not exists pgcrypto;
+
+create table if not exists public.singers (
+    id serial primary key,
+    name text not null,
+    amharic_name text
+);
+
+create unique index if not exists ux_singers_name_lower on public.singers (lower(name));
+
+create table if not exists public.songs (
+    id text primary key,
+    singer_id int not null references public.singers(id),
+    title text not null,
+    lyrics text not null,
+    language text not null default 'Amharic',
+    open_song_id int,
+    youtube_video_id varchar(20),
+    media_url text,
+    open_song_format text,
+    view_count int not null default 0,
+    like_count int not null default 0,
+    love_count int not null default 0,
+    haha_count int not null default 0,
+    wow_count int not null default 0,
+    sad_count int not null default 0,
+    angry_count int not null default 0
+);
+
+create index if not exists ix_songs_singer_id on public.songs(singer_id);
+
+-- Mirrors dbo.OpenSongIDSequence: new songs get the next free OpenSong-style id.
+create sequence if not exists public.open_song_id_seq;
+alter table public.songs alter column open_song_id set default nextval('public.open_song_id_seq');
+
+create table if not exists public.profiles (
+    id uuid primary key references auth.users(id) on delete cascade,
+    display_name text,
+    role text not null default 'user' check (role in ('user', 'moderator', 'admin'))
+);
+
+create table if not exists public.song_comments (
+    id serial primary key,
+    song_id text not null references public.songs(id) on delete cascade,
+    author text not null,
+    comment text not null,
+    created_at timestamptz not null default now(),
+    user_id uuid references public.profiles(id)
+);
+
+create index if not exists ix_song_comments_song_id on public.song_comments(song_id);
+
+create table if not exists public.favorites (
+    user_id uuid not null references public.profiles(id) on delete cascade,
+    song_id text not null references public.songs(id) on delete cascade,
+    created_at timestamptz not null default now(),
+    primary key (user_id, song_id)
+);
+
+create table if not exists public.push_tokens (
+    id serial primary key,
+    user_id uuid references public.profiles(id) on delete cascade,
+    device_token text not null unique,
+    platform text not null check (platform in ('ios', 'android')),
+    created_at timestamptz not null default now()
+);
+
+-- Row Level Security
+
+alter table public.singers enable row level security;
+alter table public.songs enable row level security;
+alter table public.song_comments enable row level security;
+alter table public.profiles enable row level security;
+alter table public.favorites enable row level security;
+alter table public.push_tokens enable row level security;
+
+drop policy if exists singers_public_read on public.singers;
+create policy singers_public_read on public.singers for select using (true);
+
+drop policy if exists singers_admin_write on public.singers;
+create policy singers_admin_write on public.singers for all
+    using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'moderator')))
+    with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'moderator')));
+
+drop policy if exists songs_public_read on public.songs;
+create policy songs_public_read on public.songs for select using (true);
+
+drop policy if exists songs_admin_write on public.songs;
+create policy songs_admin_write on public.songs for all
+    using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'moderator')))
+    with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'moderator')));
+
+drop policy if exists comments_public_read on public.song_comments;
+create policy comments_public_read on public.song_comments for select using (true);
+
+drop policy if exists comments_authed_insert on public.song_comments;
+create policy comments_authed_insert on public.song_comments for insert
+    with check (auth.uid() is not null);
+
+drop policy if exists comments_admin_delete on public.song_comments;
+create policy comments_admin_delete on public.song_comments for delete
+    using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'moderator')));
+
+drop policy if exists profiles_self_read on public.profiles;
+create policy profiles_self_read on public.profiles for select using (auth.uid() = id);
+
+drop policy if exists profiles_self_update on public.profiles;
+create policy profiles_self_update on public.profiles for update using (auth.uid() = id);
+
+drop policy if exists favorites_owner_all on public.favorites;
+create policy favorites_owner_all on public.favorites for all
+    using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists push_tokens_owner_all on public.push_tokens;
+create policy push_tokens_owner_all on public.push_tokens for all
+    using (auth.uid() = user_id) with check (auth.uid() = user_id);
