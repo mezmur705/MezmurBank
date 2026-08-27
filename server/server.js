@@ -2,34 +2,12 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const session = require('express-session');
-const sql = require('mssql');
+const postgres = require('postgres');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const dbConfig = {
-  server: process.env.DB_SERVER,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  options: { trustServerCertificate: true, encrypt: false }
-};
-
-let poolPromise;
-function getPool() {
-  if (!poolPromise) {
-    const pool = new sql.ConnectionPool(dbConfig);
-    pool.on('error', err => {
-      console.error('SQL pool error, will reconnect on next request:', err.message);
-      poolPromise = null;
-    });
-    poolPromise = pool.connect().catch(err => {
-      poolPromise = null;
-      throw err;
-    });
-  }
-  return poolPromise;
-}
+const db = postgres(process.env.DATABASE_URL, { ssl: 'require' });
 
 function slugify(str) {
   return (str || '').toString().toLowerCase().trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'x';
@@ -137,26 +115,30 @@ app.post('/api/admin/logout', (req, res) => {
 });
 
 async function upsertSinger(tx, name) {
-  const selectReq = new sql.Request(tx);
-  selectReq.input('Name', sql.NVarChar(300), name);
-  const existing = await selectReq.query('SELECT Id FROM dbo.Singers WHERE Name = @Name');
-  if (existing.recordset.length) return existing.recordset[0].Id;
-  const insertReq = new sql.Request(tx);
-  insertReq.input('Name', sql.NVarChar(300), name);
-  const inserted = await insertReq.query('INSERT INTO dbo.Singers (Name) OUTPUT inserted.Id VALUES (@Name)');
-  return inserted.recordset[0].Id;
+  const rows = await tx`
+    WITH ins AS (
+      INSERT INTO singers (name) VALUES (${name})
+      ON CONFLICT (lower(name)) DO NOTHING
+      RETURNING id
+    )
+    SELECT id FROM ins
+    UNION ALL
+    SELECT id FROM singers WHERE lower(name) = lower(${name})
+    LIMIT 1
+  `;
+  return rows[0].id;
 }
 
 app.get('/api/mezmurs', async (req, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT s.Id, s.OpenSongID, sg.Id AS SingerId, sg.Name AS Singer, sg.AmharicName AS SingerAmharic, s.Title, s.Lyrics, s.Language, s.OpenSongFormat, s.YoutubeVideoId, s.MediaUrl
-      FROM dbo.Songs s
-      JOIN dbo.Singers sg ON s.SingerId = sg.Id
-      ORDER BY sg.Name, s.Title
-    `);
-    res.json(result.recordset.map(r => ({ id: r.Id, openSongId: r.OpenSongID, singerId: r.SingerId, singer: r.Singer, singerAmharic: r.SingerAmharic, title: r.Title, lyrics: r.Lyrics, language: r.Language, openSongFormat: r.OpenSongFormat, youtubeVideoId: r.YoutubeVideoId, mediaUrl: r.MediaUrl })));
+    const rows = await db`
+      SELECT s.id, s.open_song_id, sg.id AS singer_id, sg.name AS singer, sg.amharic_name AS singer_amharic,
+             s.title, s.lyrics, s.language, s.open_song_format, s.youtube_video_id, s.media_url
+      FROM songs s
+      JOIN singers sg ON s.singer_id = sg.id
+      ORDER BY sg.name, s.title
+    `;
+    res.json(rows.map(r => ({ id: r.id, openSongId: r.open_song_id, singerId: r.singer_id, singer: r.singer, singerAmharic: r.singer_amharic, title: r.title, lyrics: r.lyrics, language: r.language, openSongFormat: r.open_song_format, youtubeVideoId: r.youtube_video_id, mediaUrl: r.media_url })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -167,10 +149,7 @@ app.post('/api/mezmurs', requireAdmin, async (req, res) => {
   const songs = Array.isArray(req.body?.songs) ? req.body.songs : [];
   if (!songs.length) return res.status(400).json({ error: 'No songs provided' });
   try {
-    const pool = await getPool();
-    const tx = new sql.Transaction(pool);
-    await tx.begin();
-    try {
+    await db.begin(async tx => {
       const singerIdCache = new Map();
       for (const song of songs) {
         let singerId = singerIdCache.get(song.singer);
@@ -181,27 +160,16 @@ app.post('/api/mezmurs', requireAdmin, async (req, res) => {
         const id = `${slugify(song.singer)}__${slugify(song.title)}`;
         const language = song.language || detectLanguage(song.title, song.lyrics);
         const { lyrics, openSongFormat } = buildLyricsAndFormat(song.lyrics);
-        const request = new sql.Request(tx);
-        request.input('Id', sql.NVarChar(400), id);
-        request.input('SingerId', sql.Int, singerId);
-        request.input('Title', sql.NVarChar(400), song.title);
-        request.input('Lyrics', sql.NVarChar(sql.MAX), lyrics);
-        request.input('Language', sql.NVarChar(50), language);
-        request.input('OpenSongID', sql.NVarChar(50), song.openSongId || song.OpenSongID || null);
-        request.input('OpenSongFormat', sql.NVarChar(sql.MAX), openSongFormat);
-        await request.query(`
-          MERGE dbo.Songs AS target
-          USING (SELECT @Id AS Id) AS src
-          ON target.Id = src.Id
-          WHEN MATCHED THEN UPDATE SET SingerId = @SingerId, Title = @Title, Lyrics = @Lyrics, Language = @Language, OpenSongID = @OpenSongID, OpenSongFormat = @OpenSongFormat
-          WHEN NOT MATCHED THEN INSERT (Id, SingerId, Title, Lyrics, Language, OpenSongID, OpenSongFormat) VALUES (@Id, @SingerId, @Title, @Lyrics, @Language, @OpenSongID, @OpenSongFormat);
-        `);
+        const openSongId = song.openSongId || song.OpenSongID || null;
+        await tx`
+          INSERT INTO songs (id, singer_id, title, lyrics, language, open_song_id, open_song_format)
+          VALUES (${id}, ${singerId}, ${song.title}, ${lyrics}, ${language}, ${openSongId}, ${openSongFormat})
+          ON CONFLICT (id) DO UPDATE SET
+            singer_id = EXCLUDED.singer_id, title = EXCLUDED.title, lyrics = EXCLUDED.lyrics,
+            language = EXCLUDED.language, open_song_id = EXCLUDED.open_song_id, open_song_format = EXCLUDED.open_song_format
+        `;
       }
-      await tx.commit();
-    } catch (err) {
-      await tx.rollback();
-      throw err;
-    }
+    });
     res.json({ ok: true, count: songs.length });
   } catch (err) {
     console.error(err);
@@ -211,9 +179,8 @@ app.post('/api/mezmurs', requireAdmin, async (req, res) => {
 
 app.get('/api/singers', async (req, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request().query('SELECT Id, Name, AmharicName FROM dbo.Singers ORDER BY Name');
-    res.json(result.recordset.map(r => ({ id: r.Id, name: r.Name, amharicName: r.AmharicName })));
+    const rows = await db`SELECT id, name, amharic_name FROM singers ORDER BY name`;
+    res.json(rows.map(r => ({ id: r.id, name: r.name, amharicName: r.amharic_name })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -225,16 +192,13 @@ app.put('/api/singers/:id', requireAdmin, async (req, res) => {
   const amharicName = (req.body?.amharicName || '').toString().trim() || null;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   try {
-    const pool = await getPool();
-    const request = pool.request();
-    request.input('Id', sql.Int, Number(req.params.id));
-    request.input('Name', sql.NVarChar(300), name);
-    request.input('AmharicName', sql.NVarChar(300), amharicName);
-    const result = await request.query('UPDATE dbo.Singers SET Name = @Name, AmharicName = @AmharicName WHERE Id = @Id');
-    if (!result.rowsAffected[0]) return res.status(404).json({ error: 'Singer not found' });
+    const result = await db`
+      UPDATE singers SET name = ${name}, amharic_name = ${amharicName} WHERE id = ${Number(req.params.id)}
+    `;
+    if (!result.count) return res.status(404).json({ error: 'Singer not found' });
     res.json({ ok: true });
   } catch (err) {
-    if (err.number === 2627 || err.number === 2601) {
+    if (err.code === '23505') {
       return res.status(409).json({ error: 'A singer with that name already exists' });
     }
     console.error(err);
@@ -255,29 +219,17 @@ app.put('/api/mezmurs/:id', requireAdmin, async (req, res) => {
   const mediaUrl = (req.body?.mediaUrl || '').toString().trim() || null;
 
   try {
-    const pool = await getPool();
-    const lookup = pool.request();
-    lookup.input('Id', sql.NVarChar(400), req.params.id);
-    const existing = await lookup.query('SELECT SingerId FROM dbo.Songs WHERE Id = @Id');
-    if (!existing.recordset.length) return res.status(404).json({ error: 'Song not found' });
-    const finalSingerId = singerId || existing.recordset[0].SingerId;
+    const existing = await db`SELECT singer_id FROM songs WHERE id = ${req.params.id}`;
+    if (!existing.length) return res.status(404).json({ error: 'Song not found' });
+    const finalSingerId = singerId || existing[0].singer_id;
     const finalLanguage = language || detectLanguage(title, rawLyrics);
     const { lyrics, openSongFormat } = buildLyricsAndFormat(rawLyrics);
 
-    const request = pool.request();
-    request.input('Id', sql.NVarChar(400), req.params.id);
-    request.input('SingerId', sql.Int, finalSingerId);
-    request.input('Title', sql.NVarChar(400), title);
-    request.input('Lyrics', sql.NVarChar(sql.MAX), lyrics);
-    request.input('Language', sql.NVarChar(50), finalLanguage);
-    request.input('OpenSongFormat', sql.NVarChar(sql.MAX), openSongFormat);
-    request.input('YoutubeVideoId', sql.NVarChar(20), youtubeVideoId);
-    request.input('MediaUrl', sql.NVarChar(1000), mediaUrl);
-    await request.query(`
-      UPDATE dbo.Songs SET SingerId = @SingerId, Title = @Title, Lyrics = @Lyrics, Language = @Language,
-        OpenSongFormat = @OpenSongFormat, YoutubeVideoId = @YoutubeVideoId, MediaUrl = @MediaUrl
-      WHERE Id = @Id
-    `);
+    await db`
+      UPDATE songs SET singer_id = ${finalSingerId}, title = ${title}, lyrics = ${lyrics}, language = ${finalLanguage},
+        open_song_format = ${openSongFormat}, youtube_video_id = ${youtubeVideoId}, media_url = ${mediaUrl}
+      WHERE id = ${req.params.id}
+    `;
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
@@ -285,29 +237,26 @@ app.put('/api/mezmurs/:id', requireAdmin, async (req, res) => {
   }
 });
 
-const REACTION_COLUMNS = { like: 'LikeCount', love: 'LoveCount', haha: 'HahaCount', wow: 'WowCount', sad: 'SadCount', angry: 'AngryCount' };
+const REACTION_COLUMNS = { like: 'like_count', love: 'love_count', haha: 'haha_count', wow: 'wow_count', sad: 'sad_count', angry: 'angry_count' };
 
 function statsFromRow(row) {
   return {
-    viewCount: row.ViewCount,
+    viewCount: row.view_count,
     reactions: {
-      like: row.LikeCount, love: row.LoveCount, haha: row.HahaCount,
-      wow: row.WowCount, sad: row.SadCount, angry: row.AngryCount
+      like: row.like_count, love: row.love_count, haha: row.haha_count,
+      wow: row.wow_count, sad: row.sad_count, angry: row.angry_count
     }
   };
 }
 
 app.get('/api/mezmurs/:id/stats', async (req, res) => {
   try {
-    const pool = await getPool();
-    const request = pool.request();
-    request.input('Id', sql.NVarChar(400), req.params.id);
-    const result = await request.query(`
-      SELECT ViewCount, LikeCount, LoveCount, HahaCount, WowCount, SadCount, AngryCount
-      FROM dbo.Songs WHERE Id = @Id
-    `);
-    if (!result.recordset.length) return res.status(404).json({ error: 'Song not found' });
-    res.json(statsFromRow(result.recordset[0]));
+    const rows = await db`
+      SELECT view_count, like_count, love_count, haha_count, wow_count, sad_count, angry_count
+      FROM songs WHERE id = ${req.params.id}
+    `;
+    if (!rows.length) return res.status(404).json({ error: 'Song not found' });
+    res.json(statsFromRow(rows[0]));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -316,16 +265,13 @@ app.get('/api/mezmurs/:id/stats', async (req, res) => {
 
 app.post('/api/mezmurs/:id/view', async (req, res) => {
   try {
-    const pool = await getPool();
-    const request = pool.request();
-    request.input('Id', sql.NVarChar(400), req.params.id);
-    const result = await request.query(`
-      UPDATE dbo.Songs SET ViewCount = ViewCount + 1
-      OUTPUT inserted.ViewCount, inserted.LikeCount, inserted.LoveCount, inserted.HahaCount, inserted.WowCount, inserted.SadCount, inserted.AngryCount
-      WHERE Id = @Id
-    `);
-    if (!result.recordset.length) return res.status(404).json({ error: 'Song not found' });
-    res.json(statsFromRow(result.recordset[0]));
+    const rows = await db`
+      UPDATE songs SET view_count = view_count + 1
+      WHERE id = ${req.params.id}
+      RETURNING view_count, like_count, love_count, haha_count, wow_count, sad_count, angry_count
+    `;
+    if (!rows.length) return res.status(404).json({ error: 'Song not found' });
+    res.json(statsFromRow(rows[0]));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -337,16 +283,14 @@ app.post('/api/mezmurs/:id/react', async (req, res) => {
   const column = REACTION_COLUMNS[type];
   if (!column) return res.status(400).json({ error: 'Invalid reaction type' });
   try {
-    const pool = await getPool();
-    const request = pool.request();
-    request.input('Id', sql.NVarChar(400), req.params.id);
-    const result = await request.query(`
-      UPDATE dbo.Songs SET ${column} = ${column} + 1
-      OUTPUT inserted.ViewCount, inserted.LikeCount, inserted.LoveCount, inserted.HahaCount, inserted.WowCount, inserted.SadCount, inserted.AngryCount
-      WHERE Id = @Id
-    `);
-    if (!result.recordset.length) return res.status(404).json({ error: 'Song not found' });
-    res.json(statsFromRow(result.recordset[0]));
+    // column is only ever one of the fixed REACTION_COLUMNS values above, never user input.
+    const rows = await db.unsafe(`
+      UPDATE songs SET ${column} = ${column} + 1
+      WHERE id = $1
+      RETURNING view_count, like_count, love_count, haha_count, wow_count, sad_count, angry_count
+    `, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Song not found' });
+    res.json(statsFromRow(rows[0]));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -355,13 +299,10 @@ app.post('/api/mezmurs/:id/react', async (req, res) => {
 
 app.get('/api/mezmurs/:id/comments', async (req, res) => {
   try {
-    const pool = await getPool();
-    const request = pool.request();
-    request.input('Id', sql.NVarChar(400), req.params.id);
-    const result = await request.query(`
-      SELECT Id, Author, Comment, CreatedAt FROM dbo.SongComments WHERE SongId = @Id ORDER BY CreatedAt DESC
-    `);
-    res.json(result.recordset.map(r => ({ id: r.Id, author: r.Author, comment: r.Comment, createdAt: r.CreatedAt })));
+    const rows = await db`
+      SELECT id, author, comment, created_at FROM song_comments WHERE song_id = ${req.params.id} ORDER BY created_at DESC
+    `;
+    res.json(rows.map(r => ({ id: r.id, author: r.author, comment: r.comment, createdAt: r.created_at })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -373,23 +314,16 @@ app.post('/api/mezmurs/:id/comments', async (req, res) => {
   const comment = (req.body?.comment || '').toString().trim().slice(0, 2000);
   if (!comment) return res.status(400).json({ error: 'Comment text is required' });
   try {
-    const pool = await getPool();
-    const songCheck = pool.request();
-    songCheck.input('Id', sql.NVarChar(400), req.params.id);
-    const songExists = await songCheck.query('SELECT 1 FROM dbo.Songs WHERE Id = @Id');
-    if (!songExists.recordset.length) return res.status(404).json({ error: 'Song not found' });
+    const songExists = await db`SELECT 1 FROM songs WHERE id = ${req.params.id}`;
+    if (!songExists.length) return res.status(404).json({ error: 'Song not found' });
 
-    const request = pool.request();
-    request.input('SongId', sql.NVarChar(400), req.params.id);
-    request.input('Author', sql.NVarChar(200), author);
-    request.input('Comment', sql.NVarChar(2000), comment);
-    const result = await request.query(`
-      INSERT INTO dbo.SongComments (SongId, Author, Comment)
-      OUTPUT inserted.Id, inserted.Author, inserted.Comment, inserted.CreatedAt
-      VALUES (@SongId, @Author, @Comment)
-    `);
-    const row = result.recordset[0];
-    res.json({ id: row.Id, author: row.Author, comment: row.Comment, createdAt: row.CreatedAt });
+    const rows = await db`
+      INSERT INTO song_comments (song_id, author, comment)
+      VALUES (${req.params.id}, ${author}, ${comment})
+      RETURNING id, author, comment, created_at
+    `;
+    const row = rows[0];
+    res.json({ id: row.id, author: row.author, comment: row.comment, createdAt: row.created_at });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -398,28 +332,25 @@ app.post('/api/mezmurs/:id/comments', async (req, res) => {
 
 app.get('/api/mezmurs/:id/youtube', async (req, res) => {
   try {
-    const pool = await getPool();
-    const lookup = pool.request();
-    lookup.input('Id', sql.NVarChar(400), req.params.id);
-    const found = await lookup.query(`
-      SELECT s.Title, s.Lyrics, s.YoutubeVideoId, sg.Name AS Singer
-      FROM dbo.Songs s
-      JOIN dbo.Singers sg ON s.SingerId = sg.Id
-      WHERE s.Id = @Id
-    `);
-    if (!found.recordset.length) return res.status(404).json({ error: 'Song not found' });
-    const song = found.recordset[0];
+    const found = await db`
+      SELECT s.title, s.lyrics, s.youtube_video_id, sg.name AS singer
+      FROM songs s
+      JOIN singers sg ON s.singer_id = sg.id
+      WHERE s.id = ${req.params.id}
+    `;
+    if (!found.length) return res.status(404).json({ error: 'Song not found' });
+    const song = found[0];
 
     // Already resolved (empty string means "searched, nothing found" - don't retry).
-    if (song.YoutubeVideoId !== null) {
-      return res.json({ videoId: song.YoutubeVideoId || null, configured: true });
+    if (song.youtube_video_id !== null) {
+      return res.json({ videoId: song.youtube_video_id || null, configured: true });
     }
 
     if (!process.env.YOUTUBE_API_KEY) {
       return res.json({ videoId: null, configured: false });
     }
 
-    const query = `${song.Singer} ${firstLyricLines(song.Lyrics, 7)}`;
+    const query = `${song.singer} ${firstLyricLines(song.lyrics, 7)}`;
     const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(query)}&key=${process.env.YOUTUBE_API_KEY}`;
     const ytRes = await fetch(apiUrl);
     const ytData = await ytRes.json();
@@ -429,10 +360,7 @@ app.get('/api/mezmurs/:id/youtube', async (req, res) => {
     }
     const videoId = ytData.items?.[0]?.id?.videoId || '';
 
-    const save = pool.request();
-    save.input('Id', sql.NVarChar(400), req.params.id);
-    save.input('VideoId', sql.NVarChar(20), videoId);
-    await save.query('UPDATE dbo.Songs SET YoutubeVideoId = @VideoId WHERE Id = @Id');
+    await db`UPDATE songs SET youtube_video_id = ${videoId} WHERE id = ${req.params.id}`;
 
     res.json({ videoId: videoId || null, configured: true });
   } catch (err) {
@@ -443,10 +371,7 @@ app.get('/api/mezmurs/:id/youtube', async (req, res) => {
 
 app.delete('/api/mezmurs/:id', requireAdmin, async (req, res) => {
   try {
-    const pool = await getPool();
-    const request = pool.request();
-    request.input('Id', sql.NVarChar(400), req.params.id);
-    await request.query('DELETE FROM dbo.Songs WHERE Id = @Id');
+    await db`DELETE FROM songs WHERE id = ${req.params.id}`;
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
