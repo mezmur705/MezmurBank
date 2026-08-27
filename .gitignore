@@ -1,0 +1,25 @@
+# Secrets - never commit
+.env
+server/.env
+server/google-oauth-client.json
+server/google-oauth-token.json
+ReadMezmur.session
+
+# Logs
+server/server-out.log
+server/server-err.log
+*.log
+
+# Dependencies
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local tooling state
+.claude/

@@ -1,0 +1,10 @@
+{
+  "mssql.connections": [
+    {
+      "server": "localhost",
+      "database": "MezmurifyDB",
+      "authenticationType": "SqlLogin",
+      "user": "mezmurify_app"
+    }
+  ]
+}

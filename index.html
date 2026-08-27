@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mezmurify - Amharic Mezmur Lyrics Database (Local SQL Server)</title>
+  <script src="/vendor/jszip/jszip.min.js"></script>
+  <script src="/vendor/pptxgenjs/pptxgen.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background-color: #f4f6f8; }
+
+    header {
+      background-color: #1a365d;
+      color: white;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      position: relative;
+      z-index: 100;
+    }
+    .brand { font-size: 1.4rem; font-weight: bold; color: #63b3ed; }
+    .search-tools { display: flex; gap: 10px; align-items: center; }
+    .search-tools input { padding: 8px 12px; border: 2px solid transparent; border-radius: 4px; width: 200px; outline: none; }
+    .search-tools input:focus { border-color: #63b3ed; }
+    .search-tools select { padding: 8px 12px; border: 2px solid transparent; border-radius: 4px; outline: none; background: white; }
+    .lang-badge { display: inline-block; flex-shrink: 0; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 2px 7px; border-radius: 10px; background: #ebf8ff; color: #2b6cb0; margin-left: 8px; vertical-align: middle; }
+    .media-status-icon { display: inline-flex; flex-shrink: 0; align-items: center; margin-left: 6px; vertical-align: middle; }
+    .media-status-icon svg { display: block; }
+    .amharic-name { font-weight: 400; opacity: 0.75; margin-left: 6px; }
+    .keyboard-btn { background-color: #2b6cb0; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+    .keyboard-btn:hover { background-color: #3182ce; }
+    .folder-btn { background-color: #38a169; }
+    .folder-btn:hover { background-color: #2f855a; }
+    .admin-btn { background-color: #805ad5; }
+    .admin-btn:hover { background-color: #6b46c1; }
+    .mic-btn { background-color: #dd6b20; }
+    .mic-btn:hover { background-color: #c05621; }
+    .mic-btn.listening { background-color: #e53e3e; animation: mic-pulse 1s infinite; }
+    @keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(229,62,62,0.6); } 50% { box-shadow: 0 0 0 6px rgba(229,62,62,0); } }
+    .folder-status { font-size: 0.8rem; color: #cbd5e0; }
+
+    .keyboard-panel { display: none; position: absolute; top: 60px; right: 20px; background: white; border: 1px solid #cbd5e0; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); border-radius: 8px; padding: 12px; width: 520px; max-height: 350px; overflow-y: auto; z-index: 1000; }
+    .keyboard-panel.open { display: block; }
+    .keyboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.85rem; color: #4a5568; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
+    .keyboard-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; }
+    .key-btn { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 8px 0; font-size: 1.1rem; cursor: pointer; text-align: center; user-select: none; transition: background 0.1s; }
+    .key-btn:hover { background: #3182ce; color: white; border-color: #3182ce; }
+    .key-btn.action-key { grid-column: span 2; font-size: 0.85rem; font-weight: bold; background: #e2e8f0; }
+
+    #adminPanel { width: 300px; }
+    #adminPanel input { width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #cbd5e0; border-radius: 4px; }
+    #adminPanel .keyboard-btn { width: 100%; justify-content: center; margin-bottom: 8px; }
+    #adminError { color: #c53030; font-size: 0.8rem; margin-top: 4px; min-height: 1em; }
+
+    .app-container { display: flex; flex: 1; overflow: hidden; }
+    .frame { overflow-y: auto; padding: 15px; background: white; border-right: 1px solid #e2e8f0; }
+    .left-frame { width: 25%; min-width: 220px; background-color: #f8fafc; }
+    .left-frame h3 { font-size: 1rem; color: #4a5568; margin-bottom: 10px; display: flex; justify-content: space-between; }
+    .btn-collapse { background: none; border: none; color: #3182ce; cursor: pointer; font-size: 0.8rem; }
+    /* Tree structure — shared look for the left singer nav and the middle results list. */
+    .tree-root { list-style: none; }
+    .tree-node { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+    .tree-node:hover { background: #eef2ff; }
+    .tree-node .tree-chevron { display: inline-block; width: 0.9em; font-size: 0.75rem; color: #718096; transition: transform 0.12s; }
+    .tree-node.open .tree-chevron { transform: rotate(90deg); }
+    .tree-node .tree-icon { font-size: 0.95rem; }
+    .tree-node .tree-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tree-node .tree-count { flex-shrink: 0; margin-left: auto; font-size: 0.75rem; font-weight: 400; color: #a0aec0; padding-left: 8px; }
+    .search-highlight { background: #fde047; color: #1a202c; border-radius: 2px; padding: 0 1px; }
+    .tree-children { list-style: none; margin: 0 0 2px 0; padding-left: 22px; position: relative; display: none; }
+    .tree-children.open { display: block; }
+    .tree-children::before { content: ''; position: absolute; top: 0; bottom: 10px; left: 9px; border-left: 1px solid #cbd5e0; }
+    .tree-leaf { position: relative; display: flex; align-items: center; gap: 0; padding: 2px 8px 2px 16px; cursor: pointer; font-size: 1.15rem; color: #2d3748; border-radius: 3px; }
+    .tree-leaf::before { content: ''; position: absolute; left: -13px; top: 50%; width: 13px; border-top: 1px solid #cbd5e0; }
+    .tree-leaf:hover { background: #eef2ff; color: #3182ce; }
+    .tree-leaf .tree-icon { font-size: 0.85rem; color: #a0aec0; flex-shrink: 0; margin-right: 6px; }
+    .tree-leaf .tree-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Highlight the currently selected singer/song in the left navigation, in the Mezmurify blue. */
+    #singerNav .tree-node.open, #singerNav .tree-node.open:hover { background: #63b3ed; color: #1a365d; }
+    #singerNav .tree-node.open .tree-chevron, #singerNav .tree-node.open .tree-count { color: #1a365d; }
+    #singerNav .tree-leaf.selected, #singerNav .tree-leaf.selected:hover { background: #63b3ed; color: #1a365d; }
+    #singerNav .tree-leaf.selected .tree-icon,
+    #singerNav .tree-leaf.selected .tree-song-id,
+    #singerNav .tree-leaf.selected .media-status-icon { color: #1a365d; }
+    .singer-node { margin-bottom: 0; }
+    .middle-frame { width: 45%; }
+    .opensong-corner-btn { position: sticky; top: 0; float: right; margin: 0 0 10px 10px; z-index: 5; background: #ecc94b; color: #1a202c; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-weight: 600; }
+    .opensong-corner-btn:hover { background: #d6a828; }
+    .middle-frame h2 { margin-bottom: 10px; color: #2b6cb0; }
+    .opensong-id { color: #718096; font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; }
+    .tree-song-id { color: #718096; font-size: 0.75rem; margin-right: 6px; }
+    #middleFrame { font-size: 1.1rem; }
+    #middleTree .tree-node .tree-label { font-size: 1rem; }
+    .lyric-content { white-space: pre-line; line-height: 1.6; font-size: 1.15rem; color: #1a202c; background: #fafafa; padding: 15px; border-radius: 6px; border: 1px solid #edf2f7; }
+    .lyric-wrapper { position: relative; }
+    .copy-btn { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 4px 9px; cursor: pointer; font-size: 0.95rem; color: #4a5568; line-height: 1; }
+    .copy-btn:hover { background: #e2e8f0; }
+    .copy-btn.copied { background: #38a169; border-color: #38a169; }
+    .lyric-wrapper .copy-btn { position: absolute; top: 10px; right: 10px; z-index: 3; }
+    .engagement-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 15px; padding: 10px 12px; background: #f8fafc; border: 1px solid #edf2f7; border-radius: 6px; }
+    .view-count { font-size: 0.9rem; color: #718096; }
+    .reaction-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .reaction-btn { display: flex; align-items: center; gap: 5px; background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 5px 10px; cursor: pointer; font-size: 0.9rem; }
+    .reaction-btn:hover:not(:disabled) { background: #eef2ff; border-color: #c3dafe; }
+    .reaction-btn.active { background: #ebf8ff; border-color: #63b3ed; }
+    .reaction-btn:disabled { cursor: default; opacity: 0.85; }
+    .reaction-emoji { font-size: 1.05rem; }
+    .reaction-count { font-weight: 600; color: #4a5568; }
+    .comments-section { margin-top: 15px; }
+    .comments-section h4 { margin-bottom: 10px; color: #2d3748; }
+    .comment-form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
+    .comment-form input, .comment-form textarea { padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 4px; font-family: inherit; resize: vertical; }
+    .comment-form button { align-self: flex-end; }
+    .comment-item { padding: 10px 0; border-bottom: 1px solid #edf2f7; }
+    .comment-meta { display: flex; justify-content: space-between; font-size: 0.8rem; color: #718096; margin-bottom: 4px; }
+    .comment-text { color: #1a202c; white-space: pre-line; line-height: 1.5; }
+    .comment-hint { color: #a0aec0; font-size: 0.85rem; }
+    .welcome-hero { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 15px; display: block; }
+    .singer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; margin-top: 10px; }
+    .singer-avatar-card { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px; border-radius: 8px; cursor: pointer; text-align: center; }
+    .singer-avatar-card:hover { background: #eef2ff; }
+    .singer-avatar-card img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+    .singer-avatar-card span { font-size: 0.75rem; color: #2d3748; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
+    .right-frame { width: 30%; border-right: none; background: #fafafa; }
+    .youtube-container { width: 100%; height: 250px; background: #000; border-radius: 6px; overflow: hidden; margin-top: 10px; }
+    iframe { width: 100%; height: 100%; border: none; }
+    .opensong-panel { margin-top: 15px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; max-height: 400px; overflow-y: auto; }
+    .opensong-panel h4 { margin: 0 0 8px 0; color: #2b6cb0; }
+    .opensong-panel pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', monospace; font-size: 0.95rem; line-height: 1.5; color: #1a202c; }
+
+    .delete-btn { display: none; flex-shrink: 0; margin-left: auto; background: none; border: none; cursor: pointer; font-size: 0.9rem; color: #e53e3e; padding: 2px 4px; }
+    .delete-btn-inline { display: none; background: #e53e3e; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
+    body.is-admin .delete-btn { display: block; }
+    body.is-admin .delete-btn-inline { display: inline-block; }
+
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(26,32,44,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .modal-box { background: white; border-radius: 8px; padding: 20px; width: 90%; max-width: 640px; max-height: 85vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+    .modal-box h3 { margin-bottom: 15px; color: #1a365d; }
+    .modal-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+    .modal-field label { font-size: 0.85rem; font-weight: 600; color: #4a5568; }
+    .modal-field input, .modal-field select, .modal-field textarea { padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 4px; font-family: inherit; font-size: 0.95rem; }
+    .modal-field textarea { resize: vertical; white-space: pre; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; }
+    .modal-error { color: #e53e3e; font-size: 0.85rem; margin-top: 4px; }
+    .edit-btn-inline { display: none; background: #3182ce; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
+    body.is-admin .edit-btn-inline { display: inline-block; }
+
+    @media (max-width: 900px) {
+      body { overflow: auto; height: auto; min-height: 100vh; }
+      header { align-items: flex-start; gap: 12px; flex-direction: column; }
+      .search-tools { width: 100%; flex-wrap: wrap; }
+      .search-tools input { flex: 1 1 200px; width: auto; }
+      .keyboard-panel { top: 112px; right: 12px; left: 12px; width: auto; }
+      .app-container { flex-direction: column; overflow: visible; }
+      .frame { width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      .left-frame, .middle-frame, .right-frame { width: 100%; }
+      .right-frame { min-height: 320px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">Mezmurify</div>
+    <div class="search-tools">
+      <input type="file" id="songsFolder" webkitdirectory directory multiple hidden onchange="adminUploadFolder(event)">
+      <input type="text" id="searchAll" placeholder="Search singer or Mezmur (ዘማሪ/መዝሙር)..." oninput="filterAll()">
+      <select id="filterLanguage" onchange="filterAll()">
+        <option value="">All Languages</option>
+      </select>
+      <button class="keyboard-btn" onclick="toggleKeyboard()">⌨ ኪቦርድ</button>
+      <button class="keyboard-btn mic-btn" id="micBtn" onclick="toggleVoiceSearch()" title="Search by voice">🎤</button>
+      <button class="keyboard-btn admin-btn" onclick="toggleAdminPanel()">🔑 Admin</button>
+      <span class="folder-status" id="folderStatus">Loading...</span>
+    </div>
+    <div class="keyboard-panel" id="keyboardPanel">
+      <div class="keyboard-header"><span>Amharic Keyboard</span><span style="cursor:pointer; font-weight:bold;" onclick="toggleKeyboard()">✕</span></div>
+      <div class="keyboard-grid" id="keyboardGrid"></div>
+    </div>
+    <div class="keyboard-panel" id="adminPanel">
+      <div class="keyboard-header"><span>Mezmurify Admin</span><span style="cursor:pointer; font-weight:bold;" onclick="toggleAdminPanel()">✕</span></div>
+      <div id="loginForm">
+        <input type="password" id="adminPassword" placeholder="Admin password">
+        <button class="keyboard-btn" onclick="adminLogin()">Sign In</button>
+        <div id="adminError"></div>
+      </div>
+      <div id="adminLoggedIn" style="display:none;">
+        <p style="font-size:0.9rem; margin-bottom:10px;">Signed in as admin.</p>
+        <button class="keyboard-btn folder-btn" onclick="document.getElementById('songsFolder').click()">▣ Upload Songs Folder</button>
+        <button class="keyboard-btn" style="background:#e53e3e;" onclick="adminLogout()">Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <div class="frame left-frame" id="leftFrame">
+      <h3>Singers <button class="btn-collapse" onclick="collapseAll()">Collapse All</button></h3>
+      <div id="singerNav"></div>
+    </div>
+    <div class="frame middle-frame" id="middleFrame"></div>
+    <div class="frame right-frame" id="rightFrame">
+      <h3>Media Search</h3>
+      <p style="font-size: 0.85rem; color: #718096; margin-top: 5px;">Select a Mezmur to auto-generate YouTube search video.</p>
+      <div class="youtube-container" id="youtubeContainer"><div style="color: white; text-align: center; padding-top: 100px;">No video loaded</div></div>
+      <div class="opensong-panel" id="openSongFormatPanel" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="editModalOverlay" style="display:none;" onclick="if (event.target === this) closeEditModal();">
+    <div class="modal-box" id="editModalBox"></div>
+  </div>
+
+  <script>
+    let isAdmin = false;
+    let selectedSongId = null;
+
+    function formatOpenSongId(openSongId) {
+      return openSongId == null ? '----' : String(openSongId).padStart(4, '0');
+    }
+    const mezmurData = [];
+
+    // Amharic is the default/majority language, so only flag the exceptions (e.g. English).
+    function langBadge(language) {
+      return language === 'Amharic' ? '' : `<span class="lang-badge">${language}</span>`;
+    }
+
+    const YOUTUBE_ICON_SVG = `<svg viewBox="0 0 24 24" width="15" height="15" xmlns="http://www.w3.org/2000/svg"><path fill="#FF0000" d="M23.498 6.186a2.999 2.999 0 0 0-2.113-2.117C19.505 3.5 12 3.5 12 3.5s-7.505 0-9.385.569A2.999 2.999 0 0 0 .502 6.186 31.6 31.6 0 0 0 0 12a31.6 31.6 0 0 0 .502 5.814 2.999 2.999 0 0 0 2.113 2.117C4.495 20.5 12 20.5 12 20.5s7.505 0 9.385-.569a2.999 2.999 0 0 0 2.113-2.117A31.6 31.6 0 0 0 24 12a31.6 31.6 0 0 0-.502-5.814z"/><path fill="#FFFFFF" d="M9.75 15.02V8.98L15.5 12l-5.75 3.02z"/></svg>`;
+    const DRIVE_ICON_SVG = `<svg viewBox="0 0 87.3 78" width="15" height="15" xmlns="http://www.w3.org/2000/svg"><path fill="#0066da" d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"/><path fill="#00ac47" d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z"/><path fill="#ea4335" d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z"/><path fill="#00832d" d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"/><path fill="#2684fc" d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"/><path fill="#ffba00" d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"/></svg>`;
+
+    // YouTube video confirmed (found by auto-search or set manually) vs. a local/Drive MediaUrl link vs. neither.
+    function mediaIcon(song) {
+      if (song.youtubeVideoId) return `<span class="media-status-icon" title="YouTube video available">${YOUTUBE_ICON_SVG}</span>`;
+      if (song.mediaUrl) return `<span class="media-status-icon" title="Local / Drive link available">${DRIVE_ICON_SVG}</span>`;
+      return '';
+    }
+
+    function amharicName(name, query) {
+      return name ? `<span class="amharic-name">${highlightText(name, query)}</span>` : '';
+    }
+
+    function highlightText(text, query) {
+      if (!query) return text;
+      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return text.replace(new RegExp(`(${escaped})`, 'ig'), '<span class="search-highlight">$1</span>');
+    }
+
+    function escapeHtml(text) {
+      return (text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    async function loadEngagement(songId) {
+      try {
+        const res = await fetch(`/api/mezmurs/${encodeURIComponent(songId)}/view`, { method: 'POST' });
+        if (!res.ok) return;
+        renderEngagement(songId, await res.json());
+      } catch (err) { console.error(err); }
+    }
+    function renderEngagement(songId, stats) {
+      const label = document.getElementById('viewCountLabel');
+      if (!label) return;
+      label.innerText = `👁 ${stats.viewCount} view${stats.viewCount === 1 ? '' : 's'}`;
+      const reacted = localStorage.getItem(`mezmurify_reacted_${songId}`);
+      document.querySelectorAll('#reactionRow .reaction-btn').forEach(btn => {
+        const type = btn.dataset.type;
+        btn.querySelector('.reaction-count').innerText = stats.reactions[type];
+        btn.classList.toggle('active', reacted === type);
+        btn.disabled = !!reacted;
+      });
+    }
+    async function reactToSong(songId, type) {
+      if (localStorage.getItem(`mezmurify_reacted_${songId}`)) return;
+      try {
+        const res = await fetch(`/api/mezmurs/${encodeURIComponent(songId)}/react`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type })
+        });
+        if (!res.ok) return;
+        localStorage.setItem(`mezmurify_reacted_${songId}`, type);
+        renderEngagement(songId, await res.json());
+      } catch (err) { console.error(err); }
+    }
+
+    async function loadComments(songId) {
+      const list = document.getElementById('commentsList');
+      if (!list) return;
+      list.innerHTML = '<p class="comment-hint">Loading comments…</p>';
+      try {
+        const res = await fetch(`/api/mezmurs/${encodeURIComponent(songId)}/comments`);
+        const comments = await res.json();
+        if (!comments.length) { list.innerHTML = '<p class="comment-hint">No comments yet. Be the first!</p>'; return; }
+        list.innerHTML = comments.map(c => `<div class="comment-item"><div class="comment-meta"><b>${escapeHtml(c.author)}</b><span>${new Date(c.createdAt).toLocaleString()}</span></div><div class="comment-text">${escapeHtml(c.comment)}</div></div>`).join('');
+      } catch (err) {
+        list.innerHTML = '<p class="comment-hint">Could not load comments.</p>';
+      }
+    }
+    async function postComment(songId) {
+      const authorInput = document.getElementById('commentAuthor');
+      const textInput = document.getElementById('commentText');
+      const comment = textInput.value.trim();
+      if (!comment) return;
+      const postBtn = document.getElementById('postCommentBtn');
+      postBtn.disabled = true;
+      try {
+        const res = await fetch(`/api/mezmurs/${encodeURIComponent(songId)}/comments`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ author: authorInput.value.trim(), comment })
+        });
+        if (!res.ok) { alert('Could not post comment.'); return; }
+        textInput.value = '';
+        await loadComments(songId);
+      } finally {
+        postBtn.disabled = false;
+      }
+    }
+
+    async function copyToClipboard(text, btnEl) {
+      try {
+        await navigator.clipboard.writeText(text || '');
+      } catch (err) {
+        alert('Could not copy to clipboard.');
+        return;
+      }
+      const original = btnEl.innerHTML;
+      btnEl.innerHTML = '✅';
+      btnEl.classList.add('copied');
+      setTimeout(() => { btnEl.innerHTML = original; btnEl.classList.remove('copied'); }, 1500);
+    }
+
+    // Splits OpenSongFormat text into slides: one per [Vn] tag, lines stripped of their leading space.
+    function parseOpenSongIntoSlides(openSongFormat) {
+      const slides = [];
+      let current = null;
+      (openSongFormat || '').split(/\r?\n/).forEach(line => {
+        const tagMatch = line.match(/^\[(V\d+)\]$/);
+        if (tagMatch) {
+          current = { tag: tagMatch[1], lines: [] };
+          slides.push(current);
+        } else if (current && line.trim()) {
+          current.lines.push(line.replace(/^ /, ''));
+        }
+      });
+      return slides;
+    }
+
+    // pptxgenjs's fit:'shrink' only writes a PowerPoint autofit hint that PowerPoint applies
+    // lazily after you manually edit the shape - it doesn't shrink the text in the generated
+    // file. So the font size is computed up front from line count / longest line instead.
+    function computeVerseFontSize(lines, boxWidthIn, boxHeightIn, maxSize) {
+      const lineCount = Math.max(1, lines.length);
+      const maxLen = Math.max(1, ...lines.map(l => l.length));
+      const heightFit = (boxHeightIn * 72) / (lineCount * 1.3);
+      const widthFit = (boxWidthIn * 72) / (maxLen * 0.6);
+      return Math.max(20, Math.min(maxSize, Math.floor(Math.min(heightFit, widthFit))));
+    }
+
+    async function exportOpenSongToPptx(song, singerName, btnEl) {
+      if (typeof PptxGenJS === 'undefined') { alert('PowerPoint export library failed to load.'); return; }
+      const slidesData = parseOpenSongIntoSlides(song.openSongFormat);
+      if (!slidesData.length) { alert('No OpenSong Format data available for this song.'); return; }
+      const original = btnEl.innerHTML;
+      btnEl.innerHTML = '⏳';
+      try {
+        const pptx = new PptxGenJS();
+        const singerLabel = `${singerName} (#${formatOpenSongId(song.openSongId)})`;
+        pptx.layout = 'LAYOUT_WIDE';
+        slidesData.forEach(s => {
+          const slide = pptx.addSlide();
+          slide.background = { color: 'FFFFFF' };
+          slide.addText(song.title, {
+            x: 0.3, y: 0.15, w: '94%', h: 0.6,
+            align: 'center', fontSize: 30, color: '000000', fontFace: 'Nyala', bold: true, italic: true
+          });
+          const fontSize = computeVerseFontSize(s.lines, 12.0, 5.4, 55);
+          slide.addText(s.lines.join('\n'), {
+            x: 0.5, y: 0.9, w: '90%', h: 5.4,
+            align: 'center', valign: 'middle',
+            fontSize, color: '000000', fontFace: 'Nyala', bold: true, breakLine: true
+          });
+          slide.addText(singerLabel, {
+            x: 0.3, y: 6.85, w: '94%', h: 0.5,
+            align: 'center', fontSize: 30, color: '000000', fontFace: 'Nyala', bold: true, italic: true
+          });
+        });
+        await pptx.writeFile({ fileName: `${song.title} - ${singerName}.pptx` });
+      } finally {
+        btnEl.innerHTML = original;
+      }
+    }
+
+    function showOpenSongFormat(song, singerName) {
+      const panel = document.getElementById('openSongFormatPanel');
+      const body = escapeHtml(song.openSongFormat || song.lyrics || '');
+      panel.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;"><h4>OpenSong Format</h4><div style="display:flex; gap:6px;"><button class="copy-btn" id="copyOpenSongBtn" title="Copy OpenSong format">📋</button><button class="copy-btn" id="exportPptxBtn" title="Export as PowerPoint (one slide per verse)">🖥️</button></div></div><pre>${body}</pre>`;
+      document.getElementById('copyOpenSongBtn').onclick = event => copyToClipboard(song.openSongFormat || song.lyrics || '', event.currentTarget);
+      document.getElementById('exportPptxBtn').onclick = event => exportOpenSongToPptx(song, singerName, event.currentTarget);
+      panel.style.display = 'block';
+      panel.scrollTop = 0;
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function clearOpenSongFormat() {
+      const panel = document.getElementById('openSongFormatPanel');
+      panel.style.display = 'none';
+      panel.innerHTML = '';
+    }
+
+    const WELCOME_HTML = `
+      <img class="welcome-hero" src="https://picsum.photos/seed/mezmurify/1200/400" alt="">
+      <h2>Welcome to Mezmurify</h2>
+      <p>Select a singer from the left navigation or search for a specific mezmur to display lyrics here.</p>
+    `;
+    function showWelcome() {
+      const middleFrame = document.getElementById('middleFrame');
+      middleFrame.innerHTML = WELCOME_HTML;
+      if (!mezmurData.length) return;
+      const heading = document.createElement('h3');
+      heading.style.cssText = 'margin:20px 0 10px; color:#4a5568; font-size:1rem;';
+      heading.innerText = 'Browse Singers';
+      const grid = document.createElement('div'); grid.className = 'singer-grid';
+      mezmurData.forEach(item => {
+        const card = document.createElement('div'); card.className = 'singer-avatar-card';
+        const img = document.createElement('img');
+        img.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.singer)}&size=96&background=random&color=fff&bold=true`;
+        img.alt = item.singer; img.loading = 'lazy';
+        const label = document.createElement('span'); label.innerText = item.singer;
+        card.appendChild(img); card.appendChild(label);
+        if (item.singerAmharic) {
+          const amharicLabel = document.createElement('span');
+          amharicLabel.style.cssText = 'opacity:0.7; font-size:0.7rem;';
+          amharicLabel.innerText = item.singerAmharic;
+          card.appendChild(amharicLabel);
+        }
+        card.onclick = () => displaySingerSongs(item.singer);
+        grid.appendChild(card);
+      });
+      middleFrame.appendChild(heading);
+      middleFrame.appendChild(grid);
+    }
+
+    const amharicChars = ['ሀ', 'ለ', 'ሐ', 'መ', 'ሠ', 'ረ', 'ሰ', 'ሸ', 'ቀ', 'በ', 'ተ', 'ቸ', 'ነ', 'ኘ', 'አ', 'ከ', 'ኸ', 'ወ', 'ዐ', 'ዘ', 'ዠ', 'የ', 'ደ', 'ጀ', 'ገ', 'ጠ', 'ጨ', 'ጰ', 'ጸ', 'ፀ', 'ፈ', 'ፐ', 'ኡ', 'ኢ', 'ኣ', 'ኤ', 'እ', 'ኦ', '፞', '፡'];
+
+    let voiceRecognition = null;
+    let isListening = false;
+    let voiceContinuous = false;
+    function startListening() {
+      const SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognitionApi) return;
+      const micBtn = document.getElementById('micBtn');
+      voiceRecognition = new SpeechRecognitionApi();
+      voiceRecognition.lang = 'am-ET';
+      voiceRecognition.interimResults = false;
+      voiceRecognition.maxAlternatives = 1;
+      voiceRecognition.onstart = () => {
+        isListening = true;
+        micBtn.classList.add('listening');
+        micBtn.title = 'Listening… click to turn mic off';
+      };
+      voiceRecognition.onend = () => {
+        isListening = false;
+        micBtn.classList.remove('listening');
+        micBtn.title = 'Search by voice';
+        if (voiceContinuous) setTimeout(startListening, 300);
+      };
+      voiceRecognition.onerror = event => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          voiceContinuous = false;
+        }
+      };
+      voiceRecognition.onresult = event => {
+        const targetInput = document.getElementById('searchAll');
+        targetInput.value = event.results[0][0].transcript;
+        targetInput.dispatchEvent(new Event('input'));
+      };
+      try { voiceRecognition.start(); } catch (err) { /* already starting/started - ignore */ }
+    }
+    function toggleVoiceSearch() {
+      const SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognitionApi) {
+        alert('Voice search isn\'t supported in this browser. Try Chrome or Edge.');
+        return;
+      }
+      if (voiceContinuous) {
+        voiceContinuous = false;
+        voiceRecognition && voiceRecognition.stop();
+      } else {
+        voiceContinuous = true;
+        startListening();
+      }
+    }
+    function toggleKeyboard() {
+      document.getElementById('keyboardPanel').classList.toggle('open');
+      document.getElementById('adminPanel').classList.remove('open');
+    }
+    function toggleAdminPanel() {
+      document.getElementById('adminPanel').classList.toggle('open');
+      document.getElementById('keyboardPanel').classList.remove('open');
+    }
+    function renderKeyboard() {
+      const grid = document.getElementById('keyboardGrid');
+      grid.innerHTML = '';
+      amharicChars.forEach(char => {
+        const btn = document.createElement('button');
+        btn.className = 'key-btn'; btn.innerText = char; btn.onclick = () => appendChar(char); grid.appendChild(btn);
+      });
+      const spaceBtn = document.createElement('button');
+      spaceBtn.className = 'key-btn action-key'; spaceBtn.innerText = 'Space'; spaceBtn.onclick = () => appendChar(' '); grid.appendChild(spaceBtn);
+      const backBtn = document.createElement('button');
+      backBtn.className = 'key-btn action-key'; backBtn.innerText = '⌫ Back'; backBtn.onclick = deleteChar; grid.appendChild(backBtn);
+    }
+    function appendChar(char) {
+      const targetInput = document.getElementById('searchAll');
+      targetInput.value += char; targetInput.dispatchEvent(new Event('input'));
+    }
+    function deleteChar() {
+      const targetInput = document.getElementById('searchAll');
+      targetInput.value = targetInput.value.slice(0, -1); targetInput.dispatchEvent(new Event('input'));
+    }
+
+    async function loadMezmursFromDb() {
+      const folderStatus = document.getElementById('folderStatus');
+      folderStatus.innerText = 'Loading...';
+      try {
+        const res = await fetch('/api/mezmurs');
+        if (!res.ok) throw new Error(`Server responded ${res.status}`);
+        const rows = await res.json();
+        const singersMap = new Map();
+        rows.forEach(row => {
+          if (!singersMap.has(row.singer)) singersMap.set(row.singer, { id: row.singerId, amharic: row.singerAmharic, songs: [] });
+          singersMap.get(row.singer).songs.push({ id: row.id, openSongId: row.openSongId, singerId: row.singerId, title: row.title, lyrics: row.lyrics, language: row.language, openSongFormat: row.openSongFormat, youtubeVideoId: row.youtubeVideoId, mediaUrl: row.mediaUrl });
+        });
+        mezmurData.length = 0;
+        singersMap.forEach((entry, singer) => {
+          entry.songs.sort((a, b) => a.title.localeCompare(b.title));
+          mezmurData.push({ singer, singerId: entry.id, singerAmharic: entry.amharic, songs: entry.songs });
+        });
+        mezmurData.sort((a, b) => a.singer.localeCompare(b.singer));
+        populateLanguageFilter();
+        renderNavigation(mezmurData);
+        folderStatus.innerText = `${mezmurData.length} singers • ${rows.length} mezmurs`;
+        if (!rows.length) {
+          document.getElementById('middleFrame').innerHTML = '<h2>Database is empty</h2><p>Sign in as Admin and upload a songs folder to get started.</p>';
+        } else {
+          showWelcome();
+        }
+      } catch (err) {
+        console.error(err);
+        folderStatus.innerText = 'Could not load database';
+        document.getElementById('middleFrame').innerHTML = `<h2>⚠️ Could not reach the Mezmurify server</h2><p style="margin-top:10px;">${err.message}</p><p style="margin-top:10px; font-size:0.9rem; color:#718096;">Make sure the local server is running: open a terminal in the <code>server</code> folder and run <code>npm start</code>, then reload this page at http://localhost:3000.</p>`;
+      }
+    }
+
+    function populateLanguageFilter() {
+      const select = document.getElementById('filterLanguage');
+      const current = select.value;
+      const languages = [...new Set(mezmurData.flatMap(item => item.songs.map(song => song.language)))].sort();
+      select.innerHTML = '<option value="">All Languages</option>' + languages.map(lang => `<option value="${lang}">${lang}</option>`).join('');
+      if (languages.includes(current)) select.value = current;
+    }
+
+    function renderNavigation(data, query) {
+      const navContainer = document.getElementById('singerNav'); navContainer.innerHTML = '';
+      if (!data.length) {
+        navContainer.innerHTML = '<p style="font-size:0.9rem; color:#718096;">No singers in the database yet.</p>';
+        return;
+      }
+      const rootUl = document.createElement('ul'); rootUl.className = 'tree-root';
+      data.forEach((item, index) => {
+        const li = document.createElement('li'); li.className = 'singer-node';
+        const nodeDiv = document.createElement('div'); nodeDiv.className = 'tree-node';
+        nodeDiv.dataset.singer = item.singer;
+        nodeDiv.innerHTML = `<span class="tree-chevron">▶</span><span class="tree-icon">📁</span><span class="tree-label">${highlightText(item.singer, query)}${amharicName(item.singerAmharic, query)}</span><span class="tree-count">${item.songs.length}</span>`;
+        nodeDiv.onclick = () => toggleTree(`tree-${index}`, nodeDiv);
+        const ul = document.createElement('ul'); ul.className = 'tree-children'; ul.id = `tree-${index}`;
+        item.songs.forEach(song => {
+          const leafLi = document.createElement('li'); leafLi.className = 'tree-leaf';
+          leafLi.dataset.songId = song.id;
+          if (song.id === selectedSongId) leafLi.classList.add('selected');
+          leafLi.innerHTML = `<span class="tree-icon">🎵</span><span class="tree-song-id">${formatOpenSongId(song.openSongId)}</span><span class="tree-label">${song.title}</span>${mediaIcon(song)}`;
+          leafLi.onclick = event => { event.stopPropagation(); displayLyric(song, item.singer); leafLi.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+          ul.appendChild(leafLi);
+        });
+        li.appendChild(nodeDiv); li.appendChild(ul); rootUl.appendChild(li);
+      });
+      navContainer.appendChild(rootUl);
+    }
+    function markSelectedSong(songId) {
+      selectedSongId = songId;
+      document.querySelectorAll('#singerNav .tree-leaf').forEach(el => el.classList.toggle('selected', el.dataset.songId === songId));
+    }
+    function toggleTree(treeId, nodeElement) {
+      const tree = document.getElementById(treeId); const isExpanded = tree.classList.contains('open');
+      document.querySelectorAll('#singerNav .tree-children').forEach(item => item.classList.remove('open'));
+      document.querySelectorAll('#singerNav .tree-node').forEach(item => item.classList.remove('open'));
+      if (!isExpanded) {
+        tree.classList.add('open'); nodeElement.classList.add('open');
+        displaySingerSongs(nodeElement.dataset.singer);
+      }
+      nodeElement.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+    function collapseAll() {
+      document.querySelectorAll('#singerNav .tree-children').forEach(item => item.classList.remove('open'));
+      document.querySelectorAll('#singerNav .tree-node').forEach(item => item.classList.remove('open'));
+    }
+    // Renders one or more singer groups as a two-level tree (singer -> songs) into `container`.
+    function renderSongTree(container, groups, query) {
+      container.innerHTML = '';
+      if (!groups.length) { container.innerHTML = '<p>No mezmurs found.</p>'; return; }
+      const rootUl = document.createElement('ul'); rootUl.className = 'tree-root';
+      groups.forEach(group => {
+        const li = document.createElement('li');
+        const nodeDiv = document.createElement('div'); nodeDiv.className = 'tree-node';
+        nodeDiv.innerHTML = `<span class="tree-icon">📂</span><span class="tree-label">${highlightText(group.singer, query)}${amharicName(group.singerAmharic, query)}</span><span class="tree-count">${group.songs.length}</span>`;
+        const childUl = document.createElement('ul'); childUl.className = 'tree-children open';
+        group.songs.forEach(song => {
+          const leafLi = document.createElement('li'); leafLi.className = 'tree-leaf';
+          leafLi.innerHTML = `<span class="tree-icon">🎵</span><span class="tree-song-id">${formatOpenSongId(song.openSongId)}</span><span class="tree-label">${highlightText(song.title, query)}</span>${langBadge(song.language)}${mediaIcon(song)}<button class="delete-btn" title="Delete" onclick="event.stopPropagation(); deleteMezmur('${song.id}')">🗑</button>`;
+          leafLi.onclick = () => displayLyric(song, group.singer);
+          childUl.appendChild(leafLi);
+        });
+        li.appendChild(nodeDiv); li.appendChild(childUl); rootUl.appendChild(li);
+      });
+      container.appendChild(rootUl);
+    }
+    function displaySingerSongs(singerName) {
+      const singer = mezmurData.find(item => item.singer === singerName); if (!singer) return;
+      const middleFrame = document.getElementById('middleFrame');
+      middleFrame.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><h2>${singer.singer}${amharicName(singer.singerAmharic)}</h2><button class="edit-btn-inline" id="editSingerBtn">✏️ Edit Singer</button></div><p style="margin-bottom:15px;">Available Mezmurs (${singer.songs.length}):</p><div id="middleTree"></div>`;
+      document.getElementById('editSingerBtn').onclick = () => openEditSingerModal(singer);
+      renderSongTree(document.getElementById('middleTree'), [{ singer: singer.singer, singerAmharic: singer.singerAmharic, songs: singer.songs }]);
+      middleFrame.scrollTop = 0;
+      window.scrollTo(0, 0);
+    }
+    function displayLyric(song, singerName) {
+      markSelectedSong(song.id);
+      const query = document.getElementById('searchAll').value;
+      const singerEntry = mezmurData.find(item => item.singer === singerName);
+      const middleFrame = document.getElementById('middleFrame');
+      middleFrame.innerHTML = `<div class="opensong-id">OpenSongID: ${formatOpenSongId(song.openSongId)}</div><button class="opensong-corner-btn" id="openSongFormatBtn">🖥️ Open in PowerPoint</button><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div><h2>${highlightText(song.title, query)}${langBadge(song.language)}</h2><h4 style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4></div><div style="display:flex; gap:8px;"><button class="edit-btn-inline" id="editSongBtn">✏️ Edit</button><button class="delete-btn-inline" onclick="deleteMezmur('${song.id}')">🗑 Delete</button></div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
+        <div class="engagement-bar">
+          <span class="view-count" id="viewCountLabel">👁 — views</span>
+          <div class="reaction-row" id="reactionRow">
+            <button class="reaction-btn" data-type="like" title="Like"><span class="reaction-emoji">👍</span><span class="reaction-count">0</span></button>
+            <button class="reaction-btn" data-type="love" title="Love"><span class="reaction-emoji">❤️</span><span class="reaction-count">0</span></button>
+            <button class="reaction-btn" data-type="haha" title="Haha"><span class="reaction-emoji">😂</span><span class="reaction-count">0</span></button>
+            <button class="reaction-btn" data-type="wow" title="Wow"><span class="reaction-emoji">😮</span><span class="reaction-count">0</span></button>
+            <button class="reaction-btn" data-type="sad" title="Sad"><span class="reaction-emoji">😢</span><span class="reaction-count">0</span></button>
+            <button class="reaction-btn" data-type="angry" title="Angry"><span class="reaction-emoji">😡</span><span class="reaction-count">0</span></button>
+          </div>
+        </div>
+        <div class="comments-section">
+          <h4>💬 Comments</h4>
+          <div class="comment-form">
+            <input type="text" id="commentAuthor" placeholder="Your name (optional)">
+            <textarea id="commentText" placeholder="Write a comment..." rows="2"></textarea>
+            <button class="keyboard-btn" id="postCommentBtn">Post</button>
+          </div>
+          <div id="commentsList"></div>
+        </div>`;
+      document.getElementById('openSongFormatBtn').onclick = event => exportOpenSongToPptx(song, singerName, event.currentTarget);
+      document.getElementById('editSongBtn').onclick = () => openEditSongModal(song, singerName);
+      document.getElementById('copyLyricsBtn').onclick = event => copyToClipboard(song.lyrics, event.currentTarget);
+      document.querySelectorAll('#reactionRow .reaction-btn').forEach(btn => {
+        btn.onclick = () => reactToSong(song.id, btn.dataset.type);
+      });
+      document.getElementById('postCommentBtn').onclick = () => postComment(song.id);
+      showOpenSongFormat(song, singerName);
+      loadEngagement(song.id);
+      loadComments(song.id);
+      middleFrame.scrollTop = 0;
+      window.scrollTo(0, 0);
+      loadYouTubeFrame(song, singerName);
+    }
+
+    // A Drive share link embeds as its own player (works for audio/video); anything else falls
+    // back to a plain HTML5 <audio> element.
+    function renderMediaPlayer(mediaUrl) {
+      const driveMatch = mediaUrl.match(/\/file\/d\/([^/]+)/);
+      if (driveMatch) {
+        return `<iframe src="https://drive.google.com/file/d/${driveMatch[1]}/preview" allow="autoplay" allowfullscreen></iframe>`;
+      }
+      return `<audio controls autoplay style="width:90%; margin-top:100px;" src="${escapeHtml(mediaUrl)}"></audio>`;
+    }
+
+    async function loadYouTubeFrame(song, singerName) {
+      const container = document.getElementById('youtubeContainer');
+      container.innerHTML = '<div style="color:white; text-align:center; padding-top:100px;">Searching YouTube…</div>';
+      try {
+        const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube`);
+        const data = await res.json();
+        if (data.videoId) {
+          container.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.videoId}" allowfullscreen></iframe>`;
+          return;
+        }
+        // No YouTube video found (or not searched yet) - play the MediaUrl in its place, if any.
+        container.innerHTML = song.mediaUrl
+          ? renderMediaPlayer(song.mediaUrl)
+          : '<div style="color:white; text-align:center; padding-top:100px;">No video available</div>';
+      } catch (err) {
+        container.innerHTML = '<div style="color:white; text-align:center; padding-top:100px;">Could not reach the server.</div>';
+      }
+    }
+    // Single search box: matches singer name/Amharic name (pulling in all their songs)
+    // OR song title/lyrics, whichever hits first. Language filter narrows songs either way.
+    function filterAll() {
+      const rawQuery = document.getElementById('searchAll').value;
+      const query = rawQuery.toLowerCase().trim();
+      const lang = document.getElementById('filterLanguage').value;
+      const middleFrame = document.getElementById('middleFrame');
+
+      const groups = [];
+      mezmurData.forEach(singer => {
+        const singerMatches = !query || singer.singer.toLowerCase().includes(query) || (singer.singerAmharic && singer.singerAmharic.toLowerCase().includes(query));
+        const songs = singer.songs.filter(song => {
+          if (lang && song.language !== lang) return false;
+          if (!query || singerMatches) return true;
+          return song.title.toLowerCase().includes(query) || song.lyrics.toLowerCase().includes(query);
+        });
+        if (songs.length) groups.push({ singer: singer.singer, singerAmharic: singer.singerAmharic, songs });
+      });
+
+      renderNavigation(groups, rawQuery);
+
+      if (!query && !lang) { showWelcome(); return; }
+
+      const totalMatches = groups.reduce((sum, g) => sum + g.songs.length, 0);
+      const heading = query ? `Search Results for "${rawQuery}"` : `Mezmurs${lang ? ' in ' + lang : ''}`;
+      middleFrame.innerHTML = `<h2>${heading}</h2><p style="margin-bottom:15px;">${groups.length} singer(s) • ${totalMatches} mezmur(s):</p><div id="middleTree"></div>`;
+      renderSongTree(document.getElementById('middleTree'), groups, rawQuery);
+    }
+
+    async function adminUploadFolder(event) {
+      if (!isAdmin) { alert('Please sign in as Admin first.'); event.target.value = ''; return; }
+      const files = Array.from(event.target.files).filter(file => file.name.toLowerCase().endsWith('.txt'));
+      if (!files.length) return;
+      const folderStatus = document.getElementById('folderStatus');
+      const songs = [];
+      for (const file of files) {
+        const parts = file.webkitRelativePath.split('/');
+        const singerName = parts.length > 2 ? parts[parts.length - 2] : 'Unsorted';
+        const title = file.name.replace(/\.txt$/i, '').replace(/^\d+\s+/, '').trim();
+        const lyrics = await file.text();
+        songs.push({ singer: singerName, title, lyrics });
+      }
+      const CHUNK_SIZE = 200;
+      let uploaded = 0;
+      try {
+        for (let i = 0; i < songs.length; i += CHUNK_SIZE) {
+          const chunk = songs.slice(i, i + CHUNK_SIZE);
+          const res = await fetch('/api/mezmurs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ songs: chunk })
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Server responded ${res.status}`);
+          uploaded += chunk.length;
+          folderStatus.innerText = `Uploading ${uploaded}/${songs.length}...`;
+        }
+      } catch (err) {
+        alert('Upload failed: ' + err.message);
+      }
+      event.target.value = '';
+      await loadMezmursFromDb();
+    }
+
+    async function deleteMezmur(id) {
+      if (!isAdmin) return;
+      if (!confirm('Delete this mezmur from the database?')) return;
+      const res = await fetch(`/api/mezmurs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) { alert('Delete failed.'); return; }
+      await loadMezmursFromDb();
+    }
+
+    function closeEditModal() {
+      document.getElementById('editModalOverlay').style.display = 'none';
+      document.getElementById('editModalBox').innerHTML = '';
+    }
+
+    async function openEditSongModal(song, singerName) {
+      if (!isAdmin) return;
+      const box = document.getElementById('editModalBox');
+      let singers = [];
+      try { singers = await (await fetch('/api/singers')).json(); } catch (err) { /* fall back to current singer only */ }
+      const singerOptions = singers.length
+        ? singers.map(s => `<option value="${s.id}" ${s.name === singerName ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')
+        : `<option value="${song.singerId}" selected>${escapeHtml(singerName)}</option>`;
+      box.innerHTML = `<h3>Edit Mezmur</h3>
+        <div class="modal-field"><label>Title</label><input type="text" id="editSongTitle" value="${escapeHtml(song.title)}"></div>
+        <div class="modal-field"><label>Singer</label><select id="editSongSinger">${singerOptions}</select></div>
+        <div class="modal-field"><label>Language</label><select id="editSongLanguage">
+          <option value="Amharic" ${song.language === 'Amharic' ? 'selected' : ''}>Amharic</option>
+          <option value="English" ${song.language === 'English' ? 'selected' : ''}>English</option>
+        </select></div>
+        <div class="modal-field"><label>YouTube Link or Video ID</label><input type="text" id="editSongYoutube" placeholder="https://www.youtube.com/watch?v=... (leave blank to auto-search again)" value="${escapeHtml(song.youtubeVideoId || '')}"></div>
+        <div class="modal-field"><label>Local File or Google Drive Link</label><input type="text" id="editSongMediaUrl" placeholder="file:///H:/Videos/song.mp4 or a Google Drive share link" value="${escapeHtml(song.mediaUrl || '')}"></div>
+        <div class="modal-field"><label>Lyrics</label><textarea id="editSongLyrics" rows="14">${escapeHtml(song.lyrics)}</textarea></div>
+        <div class="modal-error" id="editSongError"></div>
+        <div class="modal-actions">
+          <button class="keyboard-btn" style="background:#a0aec0;" onclick="closeEditModal()">Cancel</button>
+          <button class="keyboard-btn" id="saveSongBtn">Save</button>
+        </div>`;
+      document.getElementById('saveSongBtn').onclick = () => saveSongEdit(song.id);
+      document.getElementById('editModalOverlay').style.display = 'flex';
+    }
+
+    async function saveSongEdit(songId) {
+      const title = document.getElementById('editSongTitle').value.trim();
+      const lyrics = document.getElementById('editSongLyrics').value;
+      const language = document.getElementById('editSongLanguage').value;
+      const singerId = document.getElementById('editSongSinger').value;
+      const youtubeInput = document.getElementById('editSongYoutube').value.trim();
+      const mediaUrl = document.getElementById('editSongMediaUrl').value.trim();
+      const errorEl = document.getElementById('editSongError');
+      if (!title || !lyrics.trim()) { errorEl.innerText = 'Title and lyrics are required.'; return; }
+      const saveBtn = document.getElementById('saveSongBtn');
+      saveBtn.disabled = true;
+      try {
+        const res = await fetch(`/api/mezmurs/${encodeURIComponent(songId)}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, lyrics, language, singerId, youtubeInput, mediaUrl })
+        });
+        const data = await res.json();
+        if (!res.ok) { errorEl.innerText = data.error || 'Save failed.'; return; }
+        closeEditModal();
+        await loadMezmursFromDb();
+        const updatedSinger = mezmurData.find(s => s.songs.some(sg => sg.id === songId));
+        const updatedSong = updatedSinger && updatedSinger.songs.find(sg => sg.id === songId);
+        if (updatedSong) displayLyric(updatedSong, updatedSinger.singer);
+      } catch (err) {
+        errorEl.innerText = 'Save failed: ' + err.message;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    }
+
+    function openEditSingerModal(singer) {
+      if (!isAdmin) return;
+      const box = document.getElementById('editModalBox');
+      box.innerHTML = `<h3>Edit Singer</h3>
+        <div class="modal-field"><label>Name</label><input type="text" id="editSingerName" value="${escapeHtml(singer.singer)}"></div>
+        <div class="modal-field"><label>Amharic Name</label><input type="text" id="editSingerAmharic" value="${escapeHtml(singer.singerAmharic || '')}"></div>
+        <div class="modal-error" id="editSingerError"></div>
+        <div class="modal-actions">
+          <button class="keyboard-btn" style="background:#a0aec0;" onclick="closeEditModal()">Cancel</button>
+          <button class="keyboard-btn" id="saveSingerBtn">Save</button>
+        </div>`;
+      document.getElementById('saveSingerBtn').onclick = () => saveSingerEdit(singer.singerId);
+      document.getElementById('editModalOverlay').style.display = 'flex';
+    }
+
+    async function saveSingerEdit(singerId) {
+      const name = document.getElementById('editSingerName').value.trim();
+      const amharicName = document.getElementById('editSingerAmharic').value.trim();
+      const errorEl = document.getElementById('editSingerError');
+      if (!name) { errorEl.innerText = 'Name is required.'; return; }
+      const saveBtn = document.getElementById('saveSingerBtn');
+      saveBtn.disabled = true;
+      try {
+        const res = await fetch(`/api/singers/${singerId}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, amharicName })
+        });
+        const data = await res.json();
+        if (!res.ok) { errorEl.innerText = data.error || 'Save failed.'; return; }
+        closeEditModal();
+        await loadMezmursFromDb();
+        displaySingerSongs(name);
+      } catch (err) {
+        errorEl.innerText = 'Save failed: ' + err.message;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    }
+
+    function updateAdminUI() {
+      document.body.classList.toggle('is-admin', isAdmin);
+      document.getElementById('loginForm').style.display = isAdmin ? 'none' : 'block';
+      document.getElementById('adminLoggedIn').style.display = isAdmin ? 'block' : 'none';
+    }
+
+    async function adminLogin() {
+      const password = document.getElementById('adminPassword').value;
+      const errorEl = document.getElementById('adminError');
+      errorEl.innerText = '';
+      try {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Sign-in failed');
+        isAdmin = true;
+        updateAdminUI();
+        document.getElementById('adminPanel').classList.remove('open');
+        document.getElementById('adminPassword').value = '';
+      } catch (err) {
+        errorEl.innerText = err.message;
+      }
+    }
+    async function adminLogout() {
+      await fetch('/api/admin/logout', { method: 'POST' });
+      isAdmin = false;
+      updateAdminUI();
+    }
+
+    async function init() {
+      renderKeyboard();
+      showWelcome();
+      document.getElementById('searchAll').focus();
+      try {
+        const res = await fetch('/api/admin/status');
+        const data = await res.json();
+        isAdmin = !!data.isAdmin;
+      } catch (err) {
+        isAdmin = false;
+      }
+      updateAdminUI();
+      await loadMezmursFromDb();
+      voiceContinuous = true;
+      startListening();
+    }
+
+    init();
+  </script>
+</body>
+</html>

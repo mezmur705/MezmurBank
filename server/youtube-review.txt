@@ -1,0 +1,47 @@
+YouTube link review — sort=views — generated 2026-08-25T20:10:41.428Z
+======================================================================
+
+Song.Id: abba-natnael-taye__በንሰሃ-እንመለስ-beneseha-enemeles
+Title: በንሰሃ እንመለስ (Beneseha Enemeles)
+Singer: Abba Natnael Taye
+Search query: በንሰሃ ለመመለስ ወደ ዙፋንህ ለመድረስ
+Result: NO RESULTS
+
+Song.Id: abba-natnael-taye__ኢየሱስ-ነው-ጌታ-eyesus-new-gieta
+Title: ኢየሱስ ነው ጌታ (Eyesus New Gieta)
+Singer: Abba Natnael Taye
+Search query: የጌቶች ጌታ አሃ ጌታ አሃ ሁሉን የረታ አሃ ጌታ አሃ
+Result: NO RESULTS
+
+Song.Id: abba-natnael-taye__ጌታማ-የበላይ-ነው-gietama-yebelay-new
+Title: ጌታማ የበላይ ነው (Gietama Yebelay New)
+Singer: Abba Natnael Taye
+Search query: ጌታማ የበላይ ነህ ጌታማ የበላይ
+CHOSEN: 3LpmuHA_z4s | ""ወትሮም የበላይ ነህ" ግሩም የአምልኮ ጊዜ ከዘማሪ  ፓስተር ተከስተ ጌትነት ጋር DEC 31,2020 MARSIL TV WORLDWIDE" | MARSIL TV WORLDWIDE | views=1829983 | published=2020-12-31T09:52:35Z
+URL: https://www.youtube.com/watch?v=3LpmuHA_z4s
+Other candidates:
+  y0fsXNWlRnQ | "Yebelay Neh Geta | Full Album | Singer Tesfaye Chala | Vol. 4 | የበላይ ነህ ጌታ። ሙሉ አልበም። ዘማሪ ተስፋዬ ጫላ" | Hy Media | views=96264 | published=2024-10-21T23:04:44Z
+  tZC4uvp5OLw | "Tesfaye Chala, yebelay" | Kingdom Word / ቃል መንግስቲ | views=80290 | published=2013-07-28T08:22:03Z
+  2tdRZRYxZ6g | "Yebelay Nehe (የበላይ ነህ ) - Awtaru Kebede" | Awtaru Kebede Ministry | views=28672 | published=2015-12-28T18:38:20Z
+  LNr0xIhEo0g | "ተስፋዬ ጫላ / የበላይ ነህ ጌታ/" | Four Corners EEC | views=49426 | published=2019-08-23T15:51:57Z
+
+Song.Id: abba-natnael-taye__ይመለካል-ገና-yemelekal-gena
+Title: ይመለካል ገና (Yemelekal Gena)
+Singer: Abba Natnael Taye
+Search query: ለአምላኬ ዝማሬ ለጌታ ምስጋና ገና እዘምራለሁ ገና እንደገና (2x)
+CHOSEN: BRHyHgnAtpQ | "ገና እንዘምራለን | የአእላፋት ዝማሬ መዝሙራት | በኢትዮጵያዊው ጃንደረባ ትውልድ - ጃን ያሬድ" | Janderebaw Media | views=331126 | published=2023-12-15T17:51:36Z
+URL: https://www.youtube.com/watch?v=BRHyHgnAtpQ
+Other candidates:
+  Fv-NTmMOR5E | "Abdi Abrham|ገና እዘምራለሁ|Gena Ezemralehu|- New Ethiopian Protestant Mezmur Video 2026/2018" | Singer Abdi Abrham | views=1430 | published=2026-04-08T20:50:25Z
+  Ydlpf3IUdzk | "Ethiopia 🔴ገና እንዘምራለን #ሊቀ_መዘምራን_ይልማ_ኃይሉ #like_mezemran_Yilma_Hailu_Mezmur gena enzemralen" | Yilma Hailu  | views=43813 | published=2024-05-31T18:15:01Z
+  wdKoB0GAc2A | "ገና እዘምራለሁ አላፍርም አልፈራም" | Dani Fantahun YouTube | views=3784 | published=2019-02-16T07:16:56Z
+  q_R6eshsvVU | "ገና እዘምራለሁ/እልልልልልልልልልልልልልል" | ድህንቦ ቲዩብ | views=55 | published=2024-08-04T06:21:04Z
+
+Song.Id: abba-natnael-taye__ይቅርብን-yeqreben
+Title: ይቅርብን (Yeqreben)
+Singer: Abba Natnael Taye
+Search query: ኀጢአት መሆኑን እየተረዳን በደምብ አውቀነው የምንአለበት ተዉ ባክህን ብለን አለፍነው
+Result: NO RESULTS
+
+======================================================================
+Summary: resolved=2 noResults=3 errors=0 of 5 processed
