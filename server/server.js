@@ -93,7 +93,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: { httpOnly: true, maxAge: 1000 * 60 * 60 * 8 }
 }));
-app.use(express.static(path.join(__dirname, '..')));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use('/vendor/pptxgenjs', express.static(path.join(__dirname, 'node_modules/pptxgenjs/dist')));
 app.use('/vendor/jszip', express.static(path.join(__dirname, 'node_modules/jszip/dist')));
 
