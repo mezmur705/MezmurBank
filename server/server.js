@@ -360,13 +360,13 @@ app.get('/api/drive-exports', async (req, res) => {
 
 app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) => {
   try {
-    const rows = await db`SELECT title, open_song_format FROM songs WHERE id = ${req.params.id}`;
+    const rows = await db`SELECT title, open_song_id, open_song_format FROM songs WHERE id = ${req.params.id}`;
     if (!rows.length) return res.status(404).json({ error: 'Song not found' });
-    const { title, open_song_format } = rows[0];
+    const { title, open_song_id, open_song_format } = rows[0];
 
     const drive = getDriveClient();
     const file = await drive.files.create({
-      requestBody: { name: `${title}.txt`, parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] },
+      requestBody: { name: `${open_song_id}_${title}.txt`, parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] },
       media: { mimeType: 'text/plain', body: open_song_format || '' },
       supportsAllDrives: true,
       fields: 'id, webViewLink',
