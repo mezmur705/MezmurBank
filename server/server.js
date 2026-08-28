@@ -341,6 +341,23 @@ app.post('/api/mezmurs/:id/comments', async (req, res) => {
   }
 });
 
+app.get('/api/drive-exports', async (req, res) => {
+  try {
+    const drive = getDriveClient();
+    const result = await drive.files.list({
+      q: `'${process.env.GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false`,
+      orderBy: 'createdTime desc',
+      fields: 'files(id, name, webViewLink, createdTime)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    res.json(result.data.files ?? []);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) => {
   try {
     const rows = await db`SELECT title, open_song_format FROM songs WHERE id = ${req.params.id}`;
