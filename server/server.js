@@ -413,6 +413,7 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
     if (!rows.length) return res.status(404).json({ error: 'Song not found' });
     const { title, open_song_id, open_song_format, singer_name } = rows[0];
     const xml = buildOpenSongXml({ title, singerName: singer_name, openSongId: open_song_id, lyricsBody: open_song_format });
+    console.log('[export-drive] songId=%s title=%s singer=%s xmlStart=%s', req.params.id, title, singer_name, xml.slice(0, 80));
 
     const drive = getDriveClient();
     const file = await drive.files.create({
