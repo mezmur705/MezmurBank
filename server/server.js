@@ -72,6 +72,41 @@ function buildLyricsAndFormat(lyrics) {
   return { lyrics: newLyrics, openSongFormat: out.join('\n') };
 }
 
+function escapeXml(text) {
+  return (text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Wraps a song's already-computed OpenSongFormat body in the real OpenSong XML file
+// structure, so the Drive-exported file is a genuine OpenSong-compatible song file.
+function buildOpenSongXml({ title, singerName, openSongId, lyricsBody }) {
+  const idSuffix = openSongId != null ? ` (#${openSongId})` : '';
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<song>
+<title>${escapeXml(title)}</title>
+<author>${escapeXml(singerName)}${idSuffix}</author>
+<lyrics>
+
+${lyricsBody || ''}
+</lyrics>
+  <copyright></copyright>
+  <hymn_number></hymn_number>
+  <presentation></presentation>
+  <ccli></ccli>
+  <capo print="false" sharp="true"></capo>
+  <key></key>
+  <aka></aka>
+  <key_line></key_line>
+  <user1></user1>
+  <user2></user2>
+  <user3></user3>
+  <theme></theme>
+  <linked_songs/>
+  <tempo></tempo>
+  <time_sig></time_sig>
+  <backgrounds resize="body" keep_aspect="true" link="false" background_as_text="true"/>
+</song>`;
+}
+
 // Accepts a pasted YouTube URL (watch/embed/shorts/youtu.be) or a bare 11-char video ID.
 // Returns the video ID, or undefined if non-empty input didn't match any known format.
 function extractYoutubeId(input) {
@@ -360,14 +395,20 @@ app.get('/api/drive-exports', async (req, res) => {
 
 app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) => {
   try {
-    const rows = await db`SELECT title, open_song_id, open_song_format FROM songs WHERE id = ${req.params.id}`;
+    const rows = await db`
+      SELECT s.title, s.open_song_id, s.open_song_format, sg.name AS singer_name
+      FROM songs s
+      JOIN singers sg ON s.singer_id = sg.id
+      WHERE s.id = ${req.params.id}
+    `;
     if (!rows.length) return res.status(404).json({ error: 'Song not found' });
-    const { title, open_song_id, open_song_format } = rows[0];
+    const { title, open_song_id, open_song_format, singer_name } = rows[0];
+    const xml = buildOpenSongXml({ title, singerName: singer_name, openSongId: open_song_id, lyricsBody: open_song_format });
 
     const drive = getDriveClient();
     const file = await drive.files.create({
       requestBody: { name: `${open_song_id}_${title}.txt`, parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] },
-      media: { mimeType: 'text/plain', body: open_song_format || '' },
+      media: { mimeType: 'text/plain', body: xml },
       supportsAllDrives: true,
       fields: 'id, webViewLink',
     });

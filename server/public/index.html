@@ -6,6 +6,8 @@
   <title>Mezmurify - Amharic Mezmur Lyrics Database (Local SQL Server)</title>
   <script src="/vendor/jszip/jszip.min.js"></script>
   <script src="/vendor/pptxgenjs/pptxgen.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background-color: #f4f6f8; }
@@ -45,10 +47,6 @@
     .keyboard-panel { display: none; position: absolute; top: 60px; right: 20px; background: white; border: 1px solid #cbd5e0; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); border-radius: 8px; padding: 12px; width: 520px; max-height: 350px; overflow-y: auto; z-index: 1000; }
     .keyboard-panel.open { display: block; }
     .keyboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.85rem; color: #4a5568; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
-    .keyboard-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; }
-    .key-btn { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 8px 0; font-size: 1.1rem; cursor: pointer; text-align: center; user-select: none; transition: background 0.1s; }
-    .key-btn:hover { background: #3182ce; color: white; border-color: #3182ce; }
-    .key-btn.action-key { grid-column: span 2; font-size: 0.85rem; font-weight: bold; background: #e2e8f0; }
 
     #adminPanel { width: 300px; }
     #adminPanel input { width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #cbd5e0; border-radius: 4px; }
@@ -149,6 +147,19 @@
     .edit-btn-inline { display: none; background: #3182ce; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
     body.is-admin .edit-btn-inline { display: inline-block; }
 
+    .account-btn { font-size: 1.1rem; padding: 8px 14px; }
+    .account-menu { display: none; position: absolute; top: 60px; right: 20px; background: white; border: 1px solid #cbd5e0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); border-radius: 8px; padding: 6px; width: 230px; z-index: 1000; }
+    .account-menu.open { display: block; }
+    .account-menu-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; color: #2d3748; }
+    .account-menu-item:hover { background: #eef2ff; }
+    .account-menu-item.destructive { color: #e53e3e; }
+    .account-menu-divider { height: 1px; background: #e2e8f0; margin: 6px 0; }
+    .favorite-btn { background: none; border: none; cursor: pointer; font-size: 1.2rem; padding: 4px 8px; line-height: 1; }
+    .export-drive-btn { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 0.9rem; color: #4a5568; display: inline-flex; align-items: center; gap: 5px; }
+    .export-drive-btn:hover { background: #e2e8f0; }
+    #signInModalOverlay .modal-box { max-width: 360px; text-align: center; }
+    #googleBtnContainer { display: flex; justify-content: center; margin-top: 12px; min-height: 44px; }
+
     @media (max-width: 900px) {
       body { overflow: auto; height: auto; min-height: 100vh; }
       header { align-items: flex-start; gap: 12px; flex-direction: column; }
@@ -168,17 +179,17 @@
     <div class="search-tools">
       <input type="file" id="songsFolder" webkitdirectory directory multiple hidden onchange="adminUploadFolder(event)">
       <input type="text" id="searchAll" placeholder="Search singer or Mezmur (ዘማሪ/መዝሙር)..." oninput="filterAll()">
-      <select id="filterLanguage" onchange="filterAll()">
-        <option value="">All Languages</option>
-      </select>
-      <button class="keyboard-btn" onclick="toggleKeyboard()">⌨ ኪቦርድ</button>
       <button class="keyboard-btn mic-btn" id="micBtn" onclick="toggleVoiceSearch()" title="Search by voice">🎤</button>
       <button class="keyboard-btn admin-btn" onclick="toggleAdminPanel()">🔑 Admin</button>
+      <button class="keyboard-btn account-btn" id="accountBtn" onclick="toggleAccountMenu()" title="Menu">☰</button>
       <span class="folder-status" id="folderStatus">Loading...</span>
     </div>
-    <div class="keyboard-panel" id="keyboardPanel">
-      <div class="keyboard-header"><span>Amharic Keyboard</span><span style="cursor:pointer; font-weight:bold;" onclick="toggleKeyboard()">✕</span></div>
-      <div class="keyboard-grid" id="keyboardGrid"></div>
+    <div class="account-menu" id="accountMenu">
+      <div class="account-menu-item" onclick="showFavoritesView()">❤️ Favorites</div>
+      <div class="account-menu-item" onclick="showRecentlyViewedView()">🕘 Recently Viewed</div>
+      <div class="account-menu-item" onclick="showDriveExportsView()">📁 Exported Files</div>
+      <div class="account-menu-divider"></div>
+      <div class="account-menu-item" id="authMenuItem" onclick="handleAuthMenuClick()">Sign In</div>
     </div>
     <div class="keyboard-panel" id="adminPanel">
       <div class="keyboard-header"><span>Mezmurify Admin</span><span style="cursor:pointer; font-weight:bold;" onclick="toggleAdminPanel()">✕</span></div>
@@ -213,6 +224,14 @@
     <div class="modal-box" id="editModalBox"></div>
   </div>
 
+  <div class="modal-overlay" id="signInModalOverlay" style="display:none;" onclick="if (event.target === this) closeSignInModal();">
+    <div class="modal-box">
+      <h3>Sign in to Mezmurify</h3>
+      <p style="color:#718096; font-size:0.9rem; margin-top:8px;">Sign in with Google to save favorites, track recently viewed songs, and export to Drive.</p>
+      <div id="googleBtnContainer"></div>
+    </div>
+  </div>
+
   <script>
     let isAdmin = false;
     let selectedSongId = null;
@@ -221,6 +240,29 @@
       return openSongId == null ? '----' : String(openSongId).padStart(4, '0');
     }
     const mezmurData = [];
+    // Flat songId -> { song, singerName } lookup, rebuilt whenever mezmurData reloads.
+    // Lets the Favorites/Recently Viewed/search views open a song without re-walking the tree.
+    const songIndex = new Map();
+
+    // Same Supabase project + Google OAuth web client already used by the Mezmurify mobile app
+    // (mobile/.env). The anon key is RLS-protected and safe to embed client-side.
+    const SUPABASE_URL = 'https://iysflnuhwozdqfcnevcr.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_KxbRA6sKt3OdDjm5bozOMA_bEd-MoRF';
+    const GOOGLE_CLIENT_ID = '263124961411-5kai0ermqq1ihncb4o86gsi20m5274ku.apps.googleusercontent.com';
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true },
+    });
+
+    let currentUser = null;
+    let currentSession = null;
+    let googleButtonRendered = false;
+
+    sb.auth.onAuthStateChange((event, session) => {
+      currentSession = session;
+      currentUser = session ? session.user : null;
+      updateAuthUI();
+      if (session) closeSignInModal();
+    });
 
     // Amharic is the default/majority language, so only flag the exceptions (e.g. English).
     function langBadge(language) {
@@ -312,6 +354,191 @@
         await loadComments(songId);
       } finally {
         postBtn.disabled = false;
+      }
+    }
+
+    function toggleAccountMenu() {
+      document.getElementById('accountMenu').classList.toggle('open');
+      document.getElementById('adminPanel').classList.remove('open');
+    }
+    function closeAccountMenu() {
+      document.getElementById('accountMenu').classList.remove('open');
+    }
+
+    function updateAuthUI() {
+      const authItem = document.getElementById('authMenuItem');
+      if (!authItem) return;
+      authItem.innerText = currentUser ? `Sign Out (${currentUser.email || 'account'})` : 'Sign In';
+      authItem.classList.toggle('destructive', !!currentUser);
+      const favBtn = document.getElementById('favoriteBtn');
+      if (favBtn && selectedSongId) refreshFavoriteButton(selectedSongId);
+    }
+    function handleAuthMenuClick() {
+      closeAccountMenu();
+      if (currentUser) sb.auth.signOut();
+      else promptSignIn();
+    }
+
+    function promptSignIn() {
+      document.getElementById('signInModalOverlay').style.display = 'flex';
+      renderGoogleButton();
+    }
+    function closeSignInModal() {
+      document.getElementById('signInModalOverlay').style.display = 'none';
+    }
+    function handleGoogleCredential(response) {
+      sb.auth.signInWithIdToken({ provider: 'google', token: response.credential }).then(({ error }) => {
+        if (error) alert('Sign-in failed: ' + error.message);
+      });
+    }
+    function renderGoogleButton() {
+      if (!window.google || !google.accounts || !google.accounts.id) {
+        setTimeout(renderGoogleButton, 300);
+        return;
+      }
+      if (!googleButtonRendered) {
+        google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
+        googleButtonRendered = true;
+      }
+      google.accounts.id.renderButton(document.getElementById('googleBtnContainer'), { theme: 'outline', size: 'large', width: 280 });
+    }
+
+    async function isFavorited(songId) {
+      if (!currentUser) return false;
+      const { data } = await sb.from('favorites').select('song_id').eq('user_id', currentUser.id).eq('song_id', songId).maybeSingle();
+      return !!data;
+    }
+    async function addFavorite(songId) {
+      const { error } = await sb.from('favorites').insert({ user_id: currentUser.id, song_id: songId });
+      if (error) throw error;
+    }
+    async function removeFavorite(songId) {
+      const { error } = await sb.from('favorites').delete().eq('user_id', currentUser.id).eq('song_id', songId);
+      if (error) throw error;
+    }
+    async function getFavoriteSongIds() {
+      const { data, error } = await sb.from('favorites').select('song_id').eq('user_id', currentUser.id);
+      if (error) throw error;
+      return (data || []).map(row => row.song_id);
+    }
+    async function refreshFavoriteButton(songId) {
+      const btn = document.getElementById('favoriteBtn');
+      if (!btn) return;
+      if (!currentUser) {
+        btn.innerText = '🤍';
+        btn.title = 'Sign in to add to favorites';
+        return;
+      }
+      const fav = await isFavorited(songId);
+      btn.innerText = fav ? '❤️' : '🤍';
+      btn.title = fav ? 'Remove from favorites' : 'Add to favorites';
+    }
+    async function toggleFavoriteUI(songId, btn) {
+      if (!currentUser) { promptSignIn(); return; }
+      const wasFavorite = btn.innerText === '❤️';
+      btn.disabled = true;
+      try {
+        if (wasFavorite) await removeFavorite(songId); else await addFavorite(songId);
+        await refreshFavoriteButton(songId);
+      } catch (err) {
+        alert('Could not update favorite: ' + err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function recordRecentlyViewed(songId) {
+      if (!currentUser) return;
+      try {
+        await sb.from('recently_viewed').upsert({ user_id: currentUser.id, song_id: songId, viewed_at: new Date().toISOString() });
+      } catch (err) { console.error(err); }
+    }
+    async function getRecentlyViewedSongIds() {
+      const { data, error } = await sb
+        .from('recently_viewed')
+        .select('song_id')
+        .eq('user_id', currentUser.id)
+        .order('viewed_at', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return (data || []).map(row => row.song_id);
+    }
+
+    async function exportSongToDrive(songId, btn) {
+      if (!currentSession) { promptSignIn(); return; }
+      const original = btn.innerHTML;
+      btn.innerHTML = '⏳ Exporting…';
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/mezmurs/${encodeURIComponent(songId)}/export-drive`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${currentSession.access_token}` },
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Export failed.');
+        if (confirm('Exported to Drive. Open the file now?')) window.open(data.webViewLink, '_blank');
+      } catch (err) {
+        alert('Export failed: ' + err.message);
+      } finally {
+        btn.innerHTML = original;
+        btn.disabled = false;
+      }
+    }
+
+    // Renders a flat list of songs (by id, via songIndex) - used by Favorites/Recently Viewed.
+    function renderFlatSongList(container, songIds, emptyMessage) {
+      container.innerHTML = '';
+      const entries = songIds.map(id => songIndex.get(id)).filter(Boolean);
+      if (!entries.length) { container.innerHTML = `<p class="comment-hint">${emptyMessage}</p>`; return; }
+      const rootUl = document.createElement('ul'); rootUl.className = 'tree-root';
+      entries.forEach(({ song, singerName }) => {
+        const li = document.createElement('li'); li.className = 'tree-leaf';
+        li.innerHTML = `<span class="tree-icon">🎵</span><span class="tree-song-id">${formatOpenSongId(song.openSongId)}</span><span class="tree-label">${escapeHtml(song.title)}</span><span class="tree-count" style="margin-left:8px; font-weight:400;">${escapeHtml(singerName)}</span>${mediaIcon(song)}`;
+        li.onclick = () => displayLyric(song, singerName);
+        rootUl.appendChild(li);
+      });
+      container.appendChild(rootUl);
+    }
+
+    async function showFavoritesView() {
+      closeAccountMenu();
+      if (!currentUser) { promptSignIn(); return; }
+      const middleFrame = document.getElementById('middleFrame');
+      middleFrame.innerHTML = '<h2>❤️ Favorites</h2><div id="favoritesListContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
+      try {
+        const ids = await getFavoriteSongIds();
+        renderFlatSongList(document.getElementById('favoritesListContainer'), ids, 'No favorite songs yet.');
+      } catch (err) {
+        document.getElementById('favoritesListContainer').innerHTML = `<p class="comment-hint">Could not load favorites: ${escapeHtml(err.message)}</p>`;
+      }
+    }
+    async function showRecentlyViewedView() {
+      closeAccountMenu();
+      if (!currentUser) { promptSignIn(); return; }
+      const middleFrame = document.getElementById('middleFrame');
+      middleFrame.innerHTML = '<h2>🕘 Recently Viewed</h2><div id="recentListContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
+      try {
+        const ids = await getRecentlyViewedSongIds();
+        renderFlatSongList(document.getElementById('recentListContainer'), ids, 'No recently viewed songs yet.');
+      } catch (err) {
+        document.getElementById('recentListContainer').innerHTML = `<p class="comment-hint">Could not load recently viewed songs: ${escapeHtml(err.message)}</p>`;
+      }
+    }
+    async function showDriveExportsView() {
+      closeAccountMenu();
+      const middleFrame = document.getElementById('middleFrame');
+      middleFrame.innerHTML = '<h2>📁 Exported Files</h2><div id="driveExportsContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
+      const container = document.getElementById('driveExportsContainer');
+      try {
+        const res = await fetch('/api/drive-exports');
+        const files = await res.json();
+        if (!res.ok) throw new Error(files.error || 'Failed to load exported files.');
+        if (!files.length) { container.innerHTML = '<p class="comment-hint">No files exported to Drive yet.</p>'; return; }
+        container.innerHTML = files
+          .map(f => `<div class="comment-item"><div class="comment-meta"><a href="${f.webViewLink}" target="_blank" rel="noopener" style="color:#2b6cb0; font-weight:600; text-decoration:none;">${escapeHtml(f.name)}</a><span>${new Date(f.createdTime).toLocaleString()}</span></div></div>`)
+          .join('');
+      } catch (err) {
+        container.innerHTML = `<p class="comment-hint">Could not load exported files: ${escapeHtml(err.message)}</p>`;
       }
     }
 
@@ -438,8 +665,6 @@
       middleFrame.appendChild(grid);
     }
 
-    const amharicChars = ['ሀ', 'ለ', 'ሐ', 'መ', 'ሠ', 'ረ', 'ሰ', 'ሸ', 'ቀ', 'በ', 'ተ', 'ቸ', 'ነ', 'ኘ', 'አ', 'ከ', 'ኸ', 'ወ', 'ዐ', 'ዘ', 'ዠ', 'የ', 'ደ', 'ጀ', 'ገ', 'ጠ', 'ጨ', 'ጰ', 'ጸ', 'ፀ', 'ፈ', 'ፐ', 'ኡ', 'ኢ', 'ኣ', 'ኤ', 'እ', 'ኦ', '፞', '፡'];
-
     let voiceRecognition = null;
     let isListening = false;
     let voiceContinuous = false;
@@ -489,33 +714,8 @@
         startListening();
       }
     }
-    function toggleKeyboard() {
-      document.getElementById('keyboardPanel').classList.toggle('open');
-      document.getElementById('adminPanel').classList.remove('open');
-    }
     function toggleAdminPanel() {
       document.getElementById('adminPanel').classList.toggle('open');
-      document.getElementById('keyboardPanel').classList.remove('open');
-    }
-    function renderKeyboard() {
-      const grid = document.getElementById('keyboardGrid');
-      grid.innerHTML = '';
-      amharicChars.forEach(char => {
-        const btn = document.createElement('button');
-        btn.className = 'key-btn'; btn.innerText = char; btn.onclick = () => appendChar(char); grid.appendChild(btn);
-      });
-      const spaceBtn = document.createElement('button');
-      spaceBtn.className = 'key-btn action-key'; spaceBtn.innerText = 'Space'; spaceBtn.onclick = () => appendChar(' '); grid.appendChild(spaceBtn);
-      const backBtn = document.createElement('button');
-      backBtn.className = 'key-btn action-key'; backBtn.innerText = '⌫ Back'; backBtn.onclick = deleteChar; grid.appendChild(backBtn);
-    }
-    function appendChar(char) {
-      const targetInput = document.getElementById('searchAll');
-      targetInput.value += char; targetInput.dispatchEvent(new Event('input'));
-    }
-    function deleteChar() {
-      const targetInput = document.getElementById('searchAll');
-      targetInput.value = targetInput.value.slice(0, -1); targetInput.dispatchEvent(new Event('input'));
     }
 
     async function loadMezmursFromDb() {
@@ -536,7 +736,8 @@
           mezmurData.push({ singer, singerId: entry.id, singerAmharic: entry.amharic, songs: entry.songs });
         });
         mezmurData.sort((a, b) => a.singer.localeCompare(b.singer));
-        populateLanguageFilter();
+        songIndex.clear();
+        mezmurData.forEach(entry => entry.songs.forEach(song => songIndex.set(song.id, { song, singerName: entry.singer })));
         renderNavigation(mezmurData);
         folderStatus.innerText = `${mezmurData.length} singers • ${rows.length} mezmurs`;
         if (!rows.length) {
@@ -549,14 +750,6 @@
         folderStatus.innerText = 'Could not load database';
         document.getElementById('middleFrame').innerHTML = `<h2>⚠️ Could not reach the Mezmurify server</h2><p style="margin-top:10px;">${err.message}</p><p style="margin-top:10px; font-size:0.9rem; color:#718096;">Make sure the local server is running: open a terminal in the <code>server</code> folder and run <code>npm start</code>, then reload this page at http://localhost:3000.</p>`;
       }
-    }
-
-    function populateLanguageFilter() {
-      const select = document.getElementById('filterLanguage');
-      const current = select.value;
-      const languages = [...new Set(mezmurData.flatMap(item => item.songs.map(song => song.language)))].sort();
-      select.innerHTML = '<option value="">All Languages</option>' + languages.map(lang => `<option value="${lang}">${lang}</option>`).join('');
-      if (languages.includes(current)) select.value = current;
     }
 
     function renderNavigation(data, query) {
@@ -637,7 +830,7 @@
       const query = document.getElementById('searchAll').value;
       const singerEntry = mezmurData.find(item => item.singer === singerName);
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = `<div class="opensong-id">OpenSongID: ${formatOpenSongId(song.openSongId)}</div><button class="opensong-corner-btn" id="openSongFormatBtn">🖥️ Open in PowerPoint</button><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div><h2>${highlightText(song.title, query)}${langBadge(song.language)}</h2><h4 style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4></div><div style="display:flex; gap:8px;"><button class="edit-btn-inline" id="editSongBtn">✏️ Edit</button><button class="delete-btn-inline" onclick="deleteMezmur('${song.id}')">🗑 Delete</button></div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
+      middleFrame.innerHTML = `<div class="opensong-id">OpenSongID: ${formatOpenSongId(song.openSongId)}</div><button class="opensong-corner-btn" id="openSongFormatBtn">🖥️ Open in PowerPoint</button><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div><h2>${highlightText(song.title, query)}${langBadge(song.language)}</h2><h4 style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4></div><div style="display:flex; gap:8px; align-items:center;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive">${DRIVE_ICON_SVG} Export</button><button class="edit-btn-inline" id="editSongBtn">✏️ Edit</button><button class="delete-btn-inline" onclick="deleteMezmur('${song.id}')">🗑 Delete</button></div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
         <div class="engagement-bar">
           <span class="view-count" id="viewCountLabel">👁 — views</span>
           <div class="reaction-row" id="reactionRow">
@@ -661,6 +854,10 @@
       document.getElementById('openSongFormatBtn').onclick = event => exportOpenSongToPptx(song, singerName, event.currentTarget);
       document.getElementById('editSongBtn').onclick = () => openEditSongModal(song, singerName);
       document.getElementById('copyLyricsBtn').onclick = event => copyToClipboard(song.lyrics, event.currentTarget);
+      document.getElementById('favoriteBtn').onclick = event => toggleFavoriteUI(song.id, event.currentTarget);
+      document.getElementById('exportDriveBtn').onclick = event => exportSongToDrive(song.id, event.currentTarget);
+      refreshFavoriteButton(song.id);
+      recordRecentlyViewed(song.id);
       document.querySelectorAll('#reactionRow .reaction-btn').forEach(btn => {
         btn.onclick = () => reactToSong(song.id, btn.dataset.type);
       });
@@ -702,18 +899,16 @@
       }
     }
     // Single search box: matches singer name/Amharic name (pulling in all their songs)
-    // OR song title/lyrics, whichever hits first. Language filter narrows songs either way.
+    // OR song title/lyrics, whichever hits first.
     function filterAll() {
       const rawQuery = document.getElementById('searchAll').value;
       const query = rawQuery.toLowerCase().trim();
-      const lang = document.getElementById('filterLanguage').value;
       const middleFrame = document.getElementById('middleFrame');
 
       const groups = [];
       mezmurData.forEach(singer => {
         const singerMatches = !query || singer.singer.toLowerCase().includes(query) || (singer.singerAmharic && singer.singerAmharic.toLowerCase().includes(query));
         const songs = singer.songs.filter(song => {
-          if (lang && song.language !== lang) return false;
           if (!query || singerMatches) return true;
           return song.title.toLowerCase().includes(query) || song.lyrics.toLowerCase().includes(query);
         });
@@ -722,10 +917,10 @@
 
       renderNavigation(groups, rawQuery);
 
-      if (!query && !lang) { showWelcome(); return; }
+      if (!query) { showWelcome(); return; }
 
       const totalMatches = groups.reduce((sum, g) => sum + g.songs.length, 0);
-      const heading = query ? `Search Results for "${rawQuery}"` : `Mezmurs${lang ? ' in ' + lang : ''}`;
+      const heading = `Search Results for "${rawQuery}"`;
       middleFrame.innerHTML = `<h2>${heading}</h2><p style="margin-bottom:15px;">${groups.length} singer(s) • ${totalMatches} mezmur(s):</p><div id="middleTree"></div>`;
       renderSongTree(document.getElementById('middleTree'), groups, rawQuery);
     }
@@ -905,7 +1100,6 @@
     }
 
     async function init() {
-      renderKeyboard();
       showWelcome();
       document.getElementById('searchAll').focus();
       try {
