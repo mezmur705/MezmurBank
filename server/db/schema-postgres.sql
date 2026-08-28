@@ -68,6 +68,37 @@ create table if not exists public.push_tokens (
     created_at timestamptz not null default now()
 );
 
+create table if not exists public.recently_viewed (
+    user_id uuid not null references public.profiles(id) on delete cascade,
+    song_id text not null references public.songs(id) on delete cascade,
+    viewed_at timestamptz not null default now(),
+    primary key (user_id, song_id)
+);
+
+create index if not exists ix_recently_viewed_user_viewed_at
+    on public.recently_viewed(user_id, viewed_at desc);
+
+-- Auto-creates a profiles row the moment a user first authenticates (via OAuth), since
+-- profiles.id is a strict FK that favorites/comments/recently_viewed all depend on, and
+-- there is no profiles_self_insert RLS policy for the client to upsert one itself.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  insert into public.profiles (id, display_name)
+  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', new.email))
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+    after insert on auth.users
+    for each row execute function public.handle_new_user();
+
 -- Row Level Security
 
 alter table public.singers enable row level security;
@@ -76,6 +107,7 @@ alter table public.song_comments enable row level security;
 alter table public.profiles enable row level security;
 alter table public.favorites enable row level security;
 alter table public.push_tokens enable row level security;
+alter table public.recently_viewed enable row level security;
 
 drop policy if exists singers_public_read on public.singers;
 create policy singers_public_read on public.singers for select using (true);
@@ -116,4 +148,8 @@ create policy favorites_owner_all on public.favorites for all
 
 drop policy if exists push_tokens_owner_all on public.push_tokens;
 create policy push_tokens_owner_all on public.push_tokens for all
+    using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists recently_viewed_owner_all on public.recently_viewed;
+create policy recently_viewed_owner_all on public.recently_viewed for all
     using (auth.uid() = user_id) with check (auth.uid() = user_id);

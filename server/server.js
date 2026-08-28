@@ -3,6 +3,8 @@ const path = require('path');
 const express = require('express');
 const session = require('express-session');
 const postgres = require('postgres');
+const { requireSupabaseUser } = require('./lib/supabaseAuth');
+const { getDriveClient } = require('./lib/googleDrive');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -324,6 +326,26 @@ app.post('/api/mezmurs/:id/comments', async (req, res) => {
     `;
     const row = rows[0];
     res.json({ id: row.id, author: row.author, comment: row.comment, createdAt: row.created_at });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) => {
+  try {
+    const rows = await db`SELECT title, open_song_format FROM songs WHERE id = ${req.params.id}`;
+    if (!rows.length) return res.status(404).json({ error: 'Song not found' });
+    const { title, open_song_format } = rows[0];
+
+    const drive = getDriveClient();
+    const file = await drive.files.create({
+      requestBody: { name: `${title}.txt`, parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] },
+      media: { mimeType: 'text/plain', body: open_song_format || '' },
+      supportsAllDrives: true,
+      fields: 'id, webViewLink',
+    });
+    res.json({ ok: true, fileId: file.data.id, webViewLink: file.data.webViewLink });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
