@@ -99,6 +99,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/vendor/pptxgenjs', express.static(path.join(__dirname, 'node_modules/pptxgenjs/dist')));
 app.use('/vendor/jszip', express.static(path.join(__dirname, 'node_modules/jszip/dist')));
 
+// mezmurify.com is fronted by a Hostinger CDN that was caching API responses (observed:
+// identical body/ETag/Date across requests with different bearer tokens on the export-drive
+// endpoint, meaning every caller got the first response verbatim). API responses are
+// per-request/per-user and must never be cached by an intermediary.
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 app.get('/api/admin/status', (req, res) => {
   res.json({ isAdmin: !!req.session.isAdmin });
 });
