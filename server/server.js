@@ -147,6 +147,15 @@ app.get('/api/admin/status', (req, res) => {
   res.json({ isAdmin: !!req.session.isAdmin });
 });
 
+// Temporary - confirms which deployed build is actually running. Remove once the
+// Drive-export XML investigation is resolved.
+app.get('/api/_debug-build', (req, res) => {
+  const sample = typeof buildOpenSongXml === 'function'
+    ? buildOpenSongXml({ title: 'Sample', singerName: 'Singer', openSongId: 1, lyricsBody: '[V1]\n line' })
+    : null;
+  res.json({ hasOpenSongXmlExport: typeof buildOpenSongXml === 'function', sample, checkedAt: new Date().toISOString() });
+});
+
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body || {};
   if (password && password === process.env.ADMIN_PASSWORD) {
