@@ -147,15 +147,6 @@ app.get('/api/admin/status', (req, res) => {
   res.json({ isAdmin: !!req.session.isAdmin });
 });
 
-// Temporary - confirms which deployed build is actually running. Remove once the
-// Drive-export XML investigation is resolved.
-app.get('/api/_debug-build', (req, res) => {
-  const sample = typeof buildOpenSongXml === 'function'
-    ? buildOpenSongXml({ title: 'Sample', singerName: 'Singer', openSongId: 1, lyricsBody: '[V1]\n line' })
-    : null;
-  res.json({ hasOpenSongXmlExport: typeof buildOpenSongXml === 'function', sample, checkedAt: new Date().toISOString() });
-});
-
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body || {};
   if (password && password === process.env.ADMIN_PASSWORD) {
@@ -413,7 +404,6 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
     if (!rows.length) return res.status(404).json({ error: 'Song not found' });
     const { title, open_song_id, open_song_format, singer_name } = rows[0];
     const xml = buildOpenSongXml({ title, singerName: singer_name, openSongId: open_song_id, lyricsBody: open_song_format });
-    console.log('[export-drive] songId=%s title=%s singer=%s xmlStart=%s', req.params.id, title, singer_name, xml.slice(0, 80));
 
     const drive = getDriveClient();
     const file = await drive.files.create({
