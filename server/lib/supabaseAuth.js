@@ -29,7 +29,10 @@ function requireSupabaseUser(req, res, next) {
       req.user = { id: payload.sub, email: payload.email };
       next();
     })
-    .catch(() => res.status(401).json({ error: 'Invalid or expired token' }));
+    .catch(err => {
+      console.error('requireSupabaseUser failed:', err.message);
+      res.status(401).json({ error: 'Invalid or expired token' });
+    });
 }
 
 module.exports = { requireSupabaseUser };
