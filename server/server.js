@@ -122,6 +122,7 @@ app.post('/api/mezmurs', requireAdmin, async (req, res) => {
   try {
     await db.begin(async tx => {
       const singerIdCache = new Map();
+      let nextOpenSongId = null;
       for (const song of songs) {
         let singerId = singerIdCache.get(song.singer);
         if (singerId === undefined) {
@@ -131,7 +132,23 @@ app.post('/api/mezmurs', requireAdmin, async (req, res) => {
         const id = `${slugify(song.singer)}__${slugify(song.title)}`;
         const language = song.language || detectLanguage(song.title, song.lyrics);
         const { lyrics, openSongFormat } = buildLyricsAndFormat(song.lyrics);
-        const openSongId = song.openSongId || song.OpenSongID || null;
+
+        let openSongId = song.openSongId || song.OpenSongID || null;
+        if (openSongId == null) {
+          // No ID supplied (e.g. the "Add Song" form) - keep an existing song's current
+          // ID untouched, or hand a brand-new song the next free number in sequence.
+          const existing = await tx`SELECT open_song_id FROM songs WHERE id = ${id}`;
+          if (existing.length) {
+            openSongId = existing[0].open_song_id;
+          } else {
+            if (nextOpenSongId === null) {
+              const [{ max_id }] = await tx`SELECT MAX(open_song_id) AS max_id FROM songs`;
+              nextOpenSongId = (max_id || 0) + 1;
+            }
+            openSongId = nextOpenSongId++;
+          }
+        }
+
         await tx`
           INSERT INTO songs (id, singer_id, title, lyrics, language, open_song_id, open_song_format)
           VALUES (${id}, ${singerId}, ${song.title}, ${lyrics}, ${language}, ${openSongId}, ${openSongFormat})
