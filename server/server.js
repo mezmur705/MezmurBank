@@ -5,6 +5,8 @@ const session = require('express-session');
 const postgres = require('postgres');
 const { requireSupabaseUser } = require('./lib/supabaseAuth');
 const { getDriveClient } = require('./lib/googleDrive');
+const { buildOpenSongXml } = require('./lib/openSongXml');
+const { buildLyricsAndFormat } = require('./lib/lyricsFormat');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -29,82 +31,6 @@ function firstLyricLines(lyrics, count) {
     .filter(line => line && !/^\[[^\]]*\]$/.test(line))
     .slice(0, count)
     .join(' ');
-}
-
-// Normalizes Lyrics (inserts a blank line every 4 lines when a song has 6+ lines and no
-// blank line at all) and rebuilds OpenSongFormat from it: stanzas split on blank lines,
-// any stanza over 4 lines further split into 4-line chunks, each chunk tagged [V1], [V2], ...
-// with a single leading space before every lyric line. Mirrors server/reformat-lyrics.js.
-function buildLyricsAndFormat(lyrics) {
-  const rawLines = (lyrics || '').replace(/\r\n/g, '\n').split('\n');
-  const hasBlankLine = rawLines.some(l => l.trim() === '');
-  const nonBlankCount = rawLines.filter(l => l.trim() !== '').length;
-
-  let lines = rawLines;
-  if (!hasBlankLine && nonBlankCount >= 6) {
-    const chunks = [];
-    for (let i = 0; i < rawLines.length; i += 4) {
-      chunks.push(rawLines.slice(i, i + 4).join('\n'));
-    }
-    lines = chunks.join('\n\n').split('\n');
-  }
-
-  const newLyrics = lines.join('\n').trim();
-
-  const stanzas = newLyrics
-    .split(/\n\s*\n/)
-    .map(s => s.split('\n').filter(l => l.trim() !== ''))
-    .filter(stanza => stanza.length);
-
-  const verses = [];
-  stanzas.forEach(stanza => {
-    for (let i = 0; i < stanza.length; i += 4) {
-      verses.push(stanza.slice(i, i + 4));
-    }
-  });
-
-  const out = [];
-  verses.forEach((verse, idx) => {
-    out.push(`[V${idx + 1}]`);
-    verse.forEach(l => out.push(` ${l}`));
-  });
-
-  return { lyrics: newLyrics, openSongFormat: out.join('\n') };
-}
-
-function escapeXml(text) {
-  return (text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-// Wraps a song's already-computed OpenSongFormat body in the real OpenSong XML file
-// structure, so the Drive-exported file is a genuine OpenSong-compatible song file.
-function buildOpenSongXml({ title, singerName, openSongId, lyricsBody }) {
-  const idSuffix = openSongId != null ? ` (#${openSongId})` : '';
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<song>
-<title>${escapeXml(title)}</title>
-<author>${escapeXml(singerName)}${idSuffix}</author>
-<lyrics>
-
-${lyricsBody || ''}
-</lyrics>
-  <copyright></copyright>
-  <hymn_number></hymn_number>
-  <presentation></presentation>
-  <ccli></ccli>
-  <capo print="false" sharp="true"></capo>
-  <key></key>
-  <aka></aka>
-  <key_line></key_line>
-  <user1></user1>
-  <user2></user2>
-  <user3></user3>
-  <theme></theme>
-  <linked_songs/>
-  <tempo></tempo>
-  <time_sig></time_sig>
-  <backgrounds resize="body" keep_aspect="true" link="false" background_as_text="true"/>
-</song>`;
 }
 
 // Accepts a pasted YouTube URL (watch/embed/shorts/youtu.be) or a bare 11-char video ID.
@@ -228,6 +154,25 @@ app.get('/api/singers', async (req, res) => {
     const rows = await db`SELECT id, name, amharic_name FROM singers ORDER BY name`;
     res.json(rows.map(r => ({ id: r.id, name: r.name, amharicName: r.amharic_name })));
   } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/singers', requireAdmin, async (req, res) => {
+  const name = (req.body?.name || '').toString().trim();
+  const amharicName = (req.body?.amharicName || '').toString().trim() || null;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
+  try {
+    const rows = await db`
+      INSERT INTO singers (name, amharic_name) VALUES (${name}, ${amharicName})
+      RETURNING id, name, amharic_name
+    `;
+    res.json({ id: rows[0].id, name: rows[0].name, amharicName: rows[0].amharic_name });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A singer with that name already exists' });
+    }
     console.error(err);
     res.status(500).json({ error: err.message });
   }

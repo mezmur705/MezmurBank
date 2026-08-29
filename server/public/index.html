@@ -201,6 +201,8 @@
       <div id="adminLoggedIn" style="display:none;">
         <p style="font-size:0.9rem; margin-bottom:10px;">Signed in as admin.</p>
         <button class="keyboard-btn folder-btn" onclick="document.getElementById('songsFolder').click()">▣ Upload Songs Folder</button>
+        <button class="keyboard-btn" onclick="openAddSingerModal()">➕ Add Singer</button>
+        <button class="keyboard-btn" onclick="openAddSongModal()">➕ Add Song</button>
         <button class="keyboard-btn" style="background:#e53e3e;" onclick="adminLogout()">Sign Out</button>
       </div>
     </div>
@@ -1061,6 +1063,92 @@
         closeEditModal();
         await loadMezmursFromDb();
         displaySingerSongs(name);
+      } catch (err) {
+        errorEl.innerText = 'Save failed: ' + err.message;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    }
+
+    function openAddSingerModal() {
+      if (!isAdmin) return;
+      const box = document.getElementById('editModalBox');
+      box.innerHTML = `<h3>Add Singer</h3>
+        <div class="modal-field"><label>Name</label><input type="text" id="newSingerName" placeholder="e.g. Abba Natnael Taye"></div>
+        <div class="modal-field"><label>Amharic Name</label><input type="text" id="newSingerAmharic" placeholder="e.g. አባ ናትናኤል ታዬ"></div>
+        <div class="modal-error" id="newSingerError"></div>
+        <div class="modal-actions">
+          <button class="keyboard-btn" style="background:#a0aec0;" onclick="closeEditModal()">Cancel</button>
+          <button class="keyboard-btn" id="saveNewSingerBtn">Add Singer</button>
+        </div>`;
+      document.getElementById('saveNewSingerBtn').onclick = saveNewSinger;
+      document.getElementById('editModalOverlay').style.display = 'flex';
+    }
+
+    async function saveNewSinger() {
+      const name = document.getElementById('newSingerName').value.trim();
+      const amharicName = document.getElementById('newSingerAmharic').value.trim();
+      const errorEl = document.getElementById('newSingerError');
+      if (!name) { errorEl.innerText = 'Name is required.'; return; }
+      const saveBtn = document.getElementById('saveNewSingerBtn');
+      saveBtn.disabled = true;
+      try {
+        const res = await fetch('/api/singers', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, amharicName })
+        });
+        const data = await res.json();
+        if (!res.ok) { errorEl.innerText = data.error || 'Save failed.'; return; }
+        closeEditModal();
+        await loadMezmursFromDb();
+        displaySingerSongs(name);
+      } catch (err) {
+        errorEl.innerText = 'Save failed: ' + err.message;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    }
+
+    function openAddSongModal() {
+      if (!isAdmin) return;
+      const box = document.getElementById('editModalBox');
+      const singerOptions = mezmurData
+        .map(s => `<option value="${escapeHtml(s.singer)}">${escapeHtml(s.singer)}</option>`)
+        .join('');
+      box.innerHTML = `<h3>Add Song</h3>
+        <div class="modal-field"><label>Singer</label>
+          <input type="text" id="newSongSinger" list="newSongSingerList" placeholder="Existing or new singer name">
+          <datalist id="newSongSingerList">${singerOptions}</datalist>
+        </div>
+        <div class="modal-field"><label>Title</label><input type="text" id="newSongTitle" placeholder="e.g. ጌታዬን አከብራለሁ (Gietayien Akebralehu)"></div>
+        <div class="modal-field"><label>Lyrics</label><textarea id="newSongLyrics" rows="14" placeholder="Paste the full lyrics here..."></textarea></div>
+        <div class="modal-error" id="newSongError"></div>
+        <div class="modal-actions">
+          <button class="keyboard-btn" style="background:#a0aec0;" onclick="closeEditModal()">Cancel</button>
+          <button class="keyboard-btn" id="saveNewSongBtn">Add Song</button>
+        </div>`;
+      document.getElementById('saveNewSongBtn').onclick = saveNewSong;
+      document.getElementById('editModalOverlay').style.display = 'flex';
+    }
+
+    async function saveNewSong() {
+      const singer = document.getElementById('newSongSinger').value.trim();
+      const title = document.getElementById('newSongTitle').value.trim();
+      const lyrics = document.getElementById('newSongLyrics').value.trim();
+      const errorEl = document.getElementById('newSongError');
+      if (!singer || !title || !lyrics) { errorEl.innerText = 'Singer, title, and lyrics are all required.'; return; }
+      const saveBtn = document.getElementById('saveNewSongBtn');
+      saveBtn.disabled = true;
+      try {
+        const res = await fetch('/api/mezmurs', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ songs: [{ singer, title, lyrics }] })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { errorEl.innerText = data.error || 'Save failed.'; return; }
+        closeEditModal();
+        await loadMezmursFromDb();
+        displaySingerSongs(singer);
       } catch (err) {
         errorEl.innerText = 'Save failed: ' + err.message;
       } finally {
