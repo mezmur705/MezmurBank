@@ -3,7 +3,7 @@ const path = require('path');
 const express = require('express');
 const session = require('express-session');
 const postgres = require('postgres');
-const { requireSupabaseUser } = require('./lib/supabaseAuth');
+const { requireSupabaseUser, verifySupabaseToken } = require('./lib/supabaseAuth');
 const { getDriveClient } = require('./lib/googleDrive');
 const { buildOpenSongXml } = require('./lib/openSongXml');
 const { buildLyricsAndFormat } = require('./lib/lyricsFormat');
@@ -44,9 +44,28 @@ function extractYoutubeId(input) {
   return undefined;
 }
 
+// Emails in ADMIN_EMAILS get admin rights on the web app just by signing in with Google,
+// with no separate password - alongside the existing password-based session login.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+
+async function isAdminRequest(req) {
+  if (req.session.isAdmin) return true;
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token || !ADMIN_EMAILS.length) return false;
+  try {
+    const payload = await verifySupabaseToken(token);
+    return !!payload.email && ADMIN_EMAILS.includes(payload.email.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function requireAdmin(req, res, next) {
-  if (!req.session.isAdmin) return res.status(401).json({ error: 'Not signed in as admin' });
-  next();
+  isAdminRequest(req).then(ok => {
+    if (!ok) return res.status(401).json({ error: 'Not signed in as admin' });
+    next();
+  });
 }
 
 app.use(express.json({ limit: '10mb' }));
@@ -69,8 +88,8 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-app.get('/api/admin/status', (req, res) => {
-  res.json({ isAdmin: !!req.session.isAdmin });
+app.get('/api/admin/status', async (req, res) => {
+  res.json({ isAdmin: await isAdminRequest(req) });
 });
 
 app.post('/api/admin/login', (req, res) => {

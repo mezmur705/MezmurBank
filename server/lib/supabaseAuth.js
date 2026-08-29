@@ -35,4 +35,4 @@ function requireSupabaseUser(req, res, next) {
     });
 }
 
-module.exports = { requireSupabaseUser };
+module.exports = { requireSupabaseUser, verifySupabaseToken };

@@ -263,8 +263,24 @@
       currentSession = session;
       currentUser = session ? session.user : null;
       updateAuthUI();
+      refreshAdminStatus();
       if (session) closeSignInModal();
     });
+
+    function authHeaders() {
+      return currentSession ? { Authorization: `Bearer ${currentSession.access_token}` } : {};
+    }
+
+    async function refreshAdminStatus() {
+      try {
+        const res = await fetch('/api/admin/status', { headers: authHeaders() });
+        const data = await res.json();
+        isAdmin = !!data.isAdmin;
+      } catch (err) {
+        isAdmin = false;
+      }
+      updateAdminUI();
+    }
 
     // Amharic is the default/majority language, so only flag the exceptions (e.g. English).
     function langBadge(language) {
@@ -947,7 +963,7 @@
           const chunk = songs.slice(i, i + CHUNK_SIZE);
           const res = await fetch('/api/mezmurs', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify({ songs: chunk })
           });
           if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Server responded ${res.status}`);
@@ -964,7 +980,7 @@
     async function deleteMezmur(id) {
       if (!isAdmin) return;
       if (!confirm('Delete this mezmur from the database?')) return;
-      const res = await fetch(`/api/mezmurs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const res = await fetch(`/api/mezmurs/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() });
       if (!res.ok) { alert('Delete failed.'); return; }
       await loadMezmursFromDb();
     }
@@ -1014,7 +1030,7 @@
       saveBtn.disabled = true;
       try {
         const res = await fetch(`/api/mezmurs/${encodeURIComponent(songId)}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ title, lyrics, language, singerId, youtubeInput, mediaUrl })
         });
         const data = await res.json();
@@ -1055,7 +1071,7 @@
       saveBtn.disabled = true;
       try {
         const res = await fetch(`/api/singers/${singerId}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ name, amharicName })
         });
         const data = await res.json();
@@ -1094,7 +1110,7 @@
       saveBtn.disabled = true;
       try {
         const res = await fetch('/api/singers', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ name, amharicName })
         });
         const data = await res.json();
@@ -1141,7 +1157,7 @@
       saveBtn.disabled = true;
       try {
         const res = await fetch('/api/mezmurs', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ songs: [{ singer, title, lyrics }] })
         });
         const data = await res.json().catch(() => ({}));
@@ -1190,14 +1206,7 @@
     async function init() {
       showWelcome();
       document.getElementById('searchAll').focus();
-      try {
-        const res = await fetch('/api/admin/status');
-        const data = await res.json();
-        isAdmin = !!data.isAdmin;
-      } catch (err) {
-        isAdmin = false;
-      }
-      updateAdminUI();
+      await refreshAdminStatus();
       await loadMezmursFromDb();
       voiceContinuous = true;
       startListening();
