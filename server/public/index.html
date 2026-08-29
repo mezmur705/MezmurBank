@@ -88,6 +88,7 @@
     .opensong-corner-btn { position: sticky; top: 0; float: right; margin: 0 0 10px 10px; z-index: 5; background: #ecc94b; color: #1a202c; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-weight: 600; }
     .opensong-corner-btn:hover { background: #d6a828; }
     .middle-frame h2 { margin-bottom: 10px; color: #2b6cb0; }
+    .lyric-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .opensong-id { color: #718096; font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; }
     .tree-song-id { color: #718096; font-size: 0.75rem; margin-right: 6px; }
     #middleFrame { font-size: 1.1rem; }
@@ -848,7 +849,7 @@
       const query = document.getElementById('searchAll').value;
       const singerEntry = mezmurData.find(item => item.singer === singerName);
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = `<div class="opensong-id">OpenSongID: ${formatOpenSongId(song.openSongId)}</div><button class="opensong-corner-btn" id="openSongFormatBtn">🖥️ Open in PowerPoint</button><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div><h2>${highlightText(song.title, query)}${langBadge(song.language)}</h2><h4 style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4></div><div style="display:flex; gap:8px; align-items:center;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive">${DRIVE_ICON_SVG} Export</button><button class="edit-btn-inline" id="editSongBtn">✏️ Edit</button><button class="delete-btn-inline" onclick="deleteMezmur('${song.id}')">🗑 Delete</button></div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
+      middleFrame.innerHTML = `<div class="opensong-id">OpenSongID: ${formatOpenSongId(song.openSongId)}</div><button class="opensong-corner-btn" id="openSongFormatBtn">🖥️ Open in PowerPoint</button><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}">${highlightText(song.title, query)}${langBadge(song.language)}</h2><h4 style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4></div><div style="display:flex; gap:8px; align-items:center; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive">${DRIVE_ICON_SVG} Export</button><button class="edit-btn-inline" id="editSongBtn">✏️ Edit</button><button class="delete-btn-inline" onclick="deleteMezmur('${song.id}')">🗑 Delete</button></div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
         <div class="engagement-bar">
           <span class="view-count" id="viewCountLabel">👁 — views</span>
           <div class="reaction-row" id="reactionRow">
