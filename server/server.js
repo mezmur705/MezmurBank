@@ -5,6 +5,7 @@ const postgres = require('postgres');
 const { requireSupabaseUser, verifySupabaseToken } = require('./lib/supabaseAuth');
 const { getDriveClient } = require('./lib/googleDrive');
 const { buildOpenSongXml } = require('./lib/openSongXml');
+const { buildSlideGroup, buildTodaySetXml } = require('./lib/openSongSet');
 const { buildLyricsAndFormat } = require('./lib/lyricsFormat');
 
 const app = express();
@@ -399,6 +400,30 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
       supportsAllDrives: true,
       fields: 'id, webViewLink',
     });
+
+    const slideGroup = buildSlideGroup({ openSongId: open_song_id, title, singerName: singer_name });
+    const todayFileId = await findDriveFile(drive, 'Today.txt', process.env.GOOGLE_DRIVE_FOLDER_ID);
+    let existingTodayXml = '';
+    if (todayFileId) {
+      const existing = await drive.files.get({ fileId: todayFileId, alt: 'media' }, { responseType: 'text' });
+      existingTodayXml = existing.data;
+    }
+    const todayXml = buildTodaySetXml(existingTodayXml, slideGroup);
+    if (todayFileId) {
+      await drive.files.update({
+        fileId: todayFileId,
+        media: { mimeType: 'text/plain', body: todayXml },
+        supportsAllDrives: true,
+      });
+    } else {
+      await drive.files.create({
+        requestBody: { name: 'Today.txt', parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] },
+        media: { mimeType: 'text/plain', body: todayXml },
+        supportsAllDrives: true,
+        fields: 'id',
+      });
+    }
+
     res.json({ ok: true, fileId: file.data.id, webViewLink: file.data.webViewLink, updated: !!existingFileId });
   } catch (err) {
     console.error(err);
