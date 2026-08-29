@@ -141,13 +141,15 @@
     .edit-btn-inline { display: none; background: #3182ce; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
     body.is-admin .edit-btn-inline { display: inline-block; }
 
-    .account-btn { font-size: 1.1rem; padding: 8px 14px; }
-    .account-menu { display: none; position: absolute; top: 60px; right: 20px; background: white; border: 1px solid #cbd5e0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); border-radius: 8px; padding: 6px; width: 230px; z-index: 1000; }
+    .account-btn { background-color: #000000; color: #fff; font-size: 1rem; padding: 0; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .account-btn:hover { background-color: #282828; }
+    .account-menu { display: none; position: absolute; top: 60px; right: 20px; background: #282828; border: none; box-shadow: 0 16px 24px rgba(0,0,0,0.3), 0 6px 8px rgba(0,0,0,0.2); border-radius: 8px; padding: 6px; width: 240px; z-index: 1000; font-family: inherit; }
     .account-menu.open { display: block; }
-    .account-menu-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; color: #2d3748; }
-    .account-menu-item:hover { background: #eef2ff; }
-    .account-menu-item.destructive { color: #e53e3e; }
-    .account-menu-divider { height: 1px; background: #e2e8f0; margin: 6px 0; }
+    .account-menu-header { padding: 12px 12px 8px; font-size: 0.8rem; color: #a7a7a7; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
+    .account-menu-item { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 4px; cursor: pointer; font-size: 0.95rem; font-weight: 700; color: #fff; }
+    .account-menu-item:hover { background: #3e3e3e; }
+    .account-menu-item.destructive { color: #f15e6c; }
+    .account-menu-divider { height: 1px; background: #3e3e3e; margin: 6px 4px; }
     .favorite-btn { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; cursor: pointer; font-size: 1.1rem; padding: 6px 10px; line-height: 1; }
     .favorite-btn:hover { background: #e2e8f0; }
     .export-drive-btn { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 0.9rem; color: #4a5568; display: inline-flex; align-items: center; gap: 5px; }
@@ -175,10 +177,11 @@
       <input type="file" id="songsFolder" webkitdirectory directory multiple hidden onchange="adminUploadFolder(event)">
       <input type="text" id="searchAll" placeholder="Search singer or Mezmur (ዘማሪ/መዝሙር)..." oninput="filterAll()">
       <button class="keyboard-btn mic-btn" id="micBtn" onclick="toggleVoiceSearch()" title="Search by voice">🎤</button>
-      <button class="keyboard-btn account-btn" id="accountBtn" onclick="toggleAccountMenu()" title="Menu">☰</button>
+      <button class="account-btn" id="accountBtn" onclick="toggleAccountMenu()" title="Menu">👤</button>
       <span class="folder-status" id="folderStatus">Loading...</span>
     </div>
     <div class="account-menu" id="accountMenu">
+      <div class="account-menu-header" id="accountMenuHeader" style="display:none;"></div>
       <div class="account-menu-item" onclick="showFavoritesView()">❤️ Favorites</div>
       <div class="account-menu-item" onclick="showRecentlyViewedView()">🕘 Recently Viewed</div>
       <div class="account-menu-item" onclick="showDriveExportsView()">📁 Exported Files</div>
@@ -375,8 +378,13 @@
     function updateAuthUI() {
       const authItem = document.getElementById('authMenuItem');
       if (!authItem) return;
-      authItem.innerText = currentUser ? `Sign Out (${currentUser.email || 'account'})` : 'Sign In';
+      authItem.innerText = currentUser ? '🚪 Sign Out' : '👤 Sign In';
       authItem.classList.toggle('destructive', !!currentUser);
+      const header = document.getElementById('accountMenuHeader');
+      if (header) {
+        header.style.display = currentUser ? 'block' : 'none';
+        header.innerText = currentUser ? `Signed in as ${currentUser.email || 'account'}` : '';
+      }
       const favBtn = document.getElementById('favoriteBtn');
       if (favBtn && selectedSongId) refreshFavoriteButton(selectedSongId);
     }
