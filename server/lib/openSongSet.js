@@ -8,7 +8,7 @@ function escapeXmlAttr(text) {
 // (minus the folder), so this must exactly match the naming used when the song
 // file itself is written to Drive.
 function slideGroupName(openSongId, title) {
-  return `${openSongId}  ${title}.txt`;
+  return `${openSongId}_${title}.txt`;
 }
 
 function buildSlideGroup({ openSongId, title, singerName }) {
