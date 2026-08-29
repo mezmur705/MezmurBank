@@ -109,7 +109,7 @@ export async function getDriveExports(): Promise<DriveExport[]> {
 export async function exportToDrive(
   songId: string,
   accessToken: string
-): Promise<{ webViewLink: string; updated: boolean }> {
+): Promise<{ webViewLink: string; updated: boolean; sundayDate: string }> {
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
   const response = await fetch(`${apiUrl}/api/mezmurs/${encodeURIComponent(songId)}/export-drive`, {

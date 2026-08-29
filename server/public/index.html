@@ -107,6 +107,15 @@
     .comment-meta { display: flex; justify-content: space-between; font-size: 0.8rem; color: #718096; margin-bottom: 4px; }
     .comment-text { color: #1a202c; white-space: pre-line; line-height: 1.5; }
     .comment-hint { color: #a0aec0; font-size: 0.85rem; }
+    .sunday-song-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #edf2f7; }
+    .sunday-song-info { flex: 1; min-width: 0; cursor: pointer; }
+    .sunday-song-title { font-weight: 600; color: #1a202c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sunday-song-singer { font-size: 0.8rem; color: #718096; }
+    .sunday-song-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .sunday-song-actions button { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.9rem; }
+    .sunday-song-actions button:hover { background: #e2e8f0; }
+    .sunday-song-actions button:disabled { opacity: 0.35; cursor: default; }
+    .sunday-song-actions button.destructive { color: #c53030; }
     .welcome-hero { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 15px; display: block; }
     .singer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; margin-top: 10px; }
     .singer-avatar-card { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px; border-radius: 8px; cursor: pointer; text-align: center; }
@@ -185,6 +194,7 @@
       <div class="account-menu-item" onclick="showFavoritesView()">❤️ Favorites</div>
       <div class="account-menu-item" onclick="showRecentlyViewedView()">🕘 Recently Viewed</div>
       <div class="account-menu-item" onclick="showDriveExportsView()">📁 Exported Files</div>
+      <div class="account-menu-item" onclick="showSundaySongsView()">🗓️ Sunday Songs</div>
       <div class="account-menu-divider admin-only"></div>
       <div class="account-menu-item admin-only" onclick="closeAccountMenu(); document.getElementById('songsFolder').click();">▣ Upload Songs Folder</div>
       <div class="account-menu-item admin-only" onclick="closeAccountMenu(); openAddSingerModal();">➕ Add Singer</div>
@@ -491,7 +501,8 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Export failed.');
-        const message = data.updated ? 'Already exported - updated the existing Drive file.' : 'Exported to Drive.';
+        const message = (data.updated ? 'Already exported - updated the existing Drive file.' : 'Exported to Drive.') +
+          (data.sundayDate ? ` Added to the Sunday Songs list for ${data.sundayDate}.` : '');
         if (confirm(`${message} Open the file now?`)) window.open(data.webViewLink, '_blank');
       } catch (err) {
         alert('Export failed: ' + err.message);
@@ -555,6 +566,82 @@
           .join('');
       } catch (err) {
         container.innerHTML = `<p class="comment-hint">Could not load exported files: ${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    async function showSundaySongsView() {
+      closeAccountMenu();
+      const middleFrame = document.getElementById('middleFrame');
+      middleFrame.innerHTML = '<h2>🗓️ Sunday Songs</h2><div id="sundaySongsContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
+      await loadSundaySongsList();
+    }
+
+    async function loadSundaySongsList() {
+      const container = document.getElementById('sundaySongsContainer');
+      try {
+        const res = await fetch('/api/sunday-songs');
+        const items = await res.json();
+        if (!res.ok) throw new Error(items.error || 'Failed to load Sunday songs.');
+        renderSundaySongsList(container, items);
+      } catch (err) {
+        container.innerHTML = `<p class="comment-hint">Could not load Sunday songs: ${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    function renderSundaySongsList(container, items) {
+      if (!items.length) { container.innerHTML = '<p class="comment-hint">No songs added for Sunday yet. Use the Drive-export button on a song to add it.</p>'; return; }
+      container.innerHTML = items.map((item, index) => `
+        <div class="sunday-song-row">
+          <div class="sunday-song-info" onclick='jumpToSongById(${JSON.stringify(item.songId)})'>
+            <div class="sunday-song-title">${formatOpenSongId(item.openSongId)} ${escapeHtml(item.title)}</div>
+            <div class="sunday-song-singer">${escapeHtml(item.singer)}</div>
+          </div>
+          ${isAdmin ? `<div class="sunday-song-actions">
+            <button title="Move up" ${index === 0 ? 'disabled' : ''} onclick='moveSundaySong(${index}, -1)'>⬆️</button>
+            <button title="Move down" ${index === items.length - 1 ? 'disabled' : ''} onclick='moveSundaySong(${index}, 1)'>⬇️</button>
+            <button class="destructive" title="Remove from Sunday" onclick='removeSundaySong(${JSON.stringify(item.songId)})'>✕</button>
+          </div>` : ''}
+        </div>
+      `).join('');
+      container.dataset.songIds = JSON.stringify(items.map(i => i.songId));
+    }
+
+    function jumpToSongById(songId) {
+      const entry = songIndex.get(songId);
+      if (entry) displayLyric(entry.song, entry.singerName);
+    }
+
+    async function moveSundaySong(index, direction) {
+      const container = document.getElementById('sundaySongsContainer');
+      const songIds = JSON.parse(container.dataset.songIds || '[]');
+      const target = index + direction;
+      if (target < 0 || target >= songIds.length) return;
+      [songIds[index], songIds[target]] = [songIds[target], songIds[index]];
+      await saveSundaySongOrder(songIds);
+    }
+
+    async function saveSundaySongOrder(songIds) {
+      try {
+        const res = await fetch('/api/sunday-songs/order', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ songIds })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not reorder.');
+        await loadSundaySongsList();
+      } catch (err) {
+        alert('Could not reorder: ' + err.message);
+      }
+    }
+
+    async function removeSundaySong(songId) {
+      try {
+        const res = await fetch(`/api/sunday-songs/${encodeURIComponent(songId)}`, { method: 'DELETE', headers: authHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not remove.');
+        await loadSundaySongsList();
+      } catch (err) {
+        alert('Could not remove: ' + err.message);
       }
     }
 
@@ -842,7 +929,7 @@
       const query = document.getElementById('searchAll').value;
       const singerEntry = mezmurData.find(item => item.singer === singerName);
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = `<div class="opensong-id">OpenSongID: ${formatOpenSongId(song.openSongId)}</div><button class="opensong-corner-btn" id="openSongFormatBtn" title="Open in PowerPoint">🖥️</button><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}">${highlightText(song.title, query)}${langBadge(song.language)}</h2><h4 class="singer-line" style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4></div><div style="display:flex; gap:8px; align-items:center; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive">${DRIVE_ICON_SVG}</button><button class="edit-btn-inline" id="editSongBtn" title="Edit">✏️</button><button class="delete-btn-inline" title="Delete" onclick="deleteMezmur('${song.id}')">🗑</button></div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
+      middleFrame.innerHTML = `<div class="opensong-id">OpenSongID: ${formatOpenSongId(song.openSongId)}</div><button class="opensong-corner-btn" id="openSongFormatBtn" title="Open in PowerPoint">🖥️</button><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}">${highlightText(song.title, query)}${langBadge(song.language)}</h2><h4 class="singer-line" style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4></div><div style="display:flex; gap:8px; align-items:center; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive and add to Sunday Songs">${DRIVE_ICON_SVG}</button><button class="edit-btn-inline" id="editSongBtn" title="Edit">✏️</button><button class="delete-btn-inline" title="Delete" onclick="deleteMezmur('${song.id}')">🗑</button></div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
         <div class="engagement-bar">
           <span class="view-count" id="viewCountLabel">👁 — views</span>
           <div class="reaction-row" id="reactionRow">

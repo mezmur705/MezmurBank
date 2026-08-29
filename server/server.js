@@ -5,7 +5,7 @@ const postgres = require('postgres');
 const { requireSupabaseUser, verifySupabaseToken } = require('./lib/supabaseAuth');
 const { getDriveClient } = require('./lib/googleDrive');
 const { buildOpenSongXml } = require('./lib/openSongXml');
-const { buildSlideGroup, buildTodaySetXml } = require('./lib/openSongSet');
+const { buildSlideGroup, buildSetXml } = require('./lib/openSongSet');
 const { buildLyricsAndFormat } = require('./lib/lyricsFormat');
 
 const app = express();
@@ -391,6 +391,42 @@ async function findDriveFile(drive, name, parentId) {
   return list.data.files && list.data.files[0] ? list.data.files[0].id : null;
 }
 
+// The upcoming Sunday's set file is named by that Sunday's date - if today is
+// already Sunday, that counts as the "next possible Sunday" rather than rolling
+// over to the following week.
+function nextSundayDate(from = new Date()) {
+  const d = new Date(from);
+  const day = d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() + (day === 0 ? 0 : 7 - day));
+  return d.toISOString().slice(0, 10);
+}
+
+async function regenerateSundaySetFile(drive) {
+  const rows = await db`
+    SELECT s.title, s.open_song_id, sg.name AS singer_name
+    FROM sunday_songs ss
+    JOIN songs s ON s.id = ss.song_id
+    JOIN singers sg ON sg.id = s.singer_id
+    ORDER BY ss.position
+  `;
+  const dateStr = nextSundayDate();
+  const xml = buildSetXml(dateStr, rows.map(r => ({ openSongId: r.open_song_id, title: r.title, singerName: r.singer_name })));
+  const folderId = process.env.GOOGLE_DRIVE_TODAY_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID;
+  const fileName = `${dateStr}.txt`;
+  const existingId = await findDriveFile(drive, fileName, folderId);
+  if (existingId) {
+    await drive.files.update({ fileId: existingId, media: { mimeType: 'text/plain', body: xml }, supportsAllDrives: true });
+  } else {
+    await drive.files.create({
+      requestBody: { name: fileName, parents: [folderId] },
+      media: { mimeType: 'text/plain', body: xml },
+      supportsAllDrives: true,
+      fields: 'id',
+    });
+  }
+  return dateStr;
+}
+
 app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) => {
   try {
     const rows = await db`
@@ -418,31 +454,69 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
       fields: 'id, webViewLink',
     });
 
-    const slideGroup = buildSlideGroup({ openSongId: open_song_id, title, singerName: singer_name });
-    const todayFolderId = process.env.GOOGLE_DRIVE_TODAY_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID;
-    const todayFileId = await findDriveFile(drive, 'Today.txt', todayFolderId);
-    let existingTodayXml = '';
-    if (todayFileId) {
-      const existing = await drive.files.get({ fileId: todayFileId, alt: 'media' }, { responseType: 'text' });
-      existingTodayXml = existing.data;
+    const alreadyOnSunday = await db`SELECT 1 FROM sunday_songs WHERE song_id = ${req.params.id}`;
+    if (!alreadyOnSunday.length) {
+      const [{ max_pos }] = await db`SELECT COALESCE(MAX(position), 0) AS max_pos FROM sunday_songs`;
+      await db`INSERT INTO sunday_songs (song_id, position) VALUES (${req.params.id}, ${max_pos + 1})`;
     }
-    const todayXml = buildTodaySetXml(existingTodayXml, slideGroup);
-    if (todayFileId) {
-      await drive.files.update({
-        fileId: todayFileId,
-        media: { mimeType: 'text/plain', body: todayXml },
-        supportsAllDrives: true,
-      });
-    } else {
-      await drive.files.create({
-        requestBody: { name: 'Today.txt', parents: [todayFolderId] },
-        media: { mimeType: 'text/plain', body: todayXml },
-        supportsAllDrives: true,
-        fields: 'id',
-      });
-    }
+    const sundayDate = await regenerateSundaySetFile(drive);
 
-    res.json({ ok: true, fileId: file.data.id, webViewLink: file.data.webViewLink, updated: !!existingFileId });
+    res.json({ ok: true, fileId: file.data.id, webViewLink: file.data.webViewLink, updated: !!existingFileId, sundayDate });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sunday-songs', async (req, res) => {
+  try {
+    const rows = await db`
+      SELECT ss.song_id, ss.position, s.title, s.open_song_id, sg.name AS singer_name
+      FROM sunday_songs ss
+      JOIN songs s ON s.id = ss.song_id
+      JOIN singers sg ON sg.id = s.singer_id
+      ORDER BY ss.position
+    `;
+    res.json(rows.map(r => ({ songId: r.song_id, position: r.position, title: r.title, openSongId: r.open_song_id, singer: r.singer_name })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/sunday-songs/order', requireAdmin, async (req, res) => {
+  const songIds = Array.isArray(req.body?.songIds) ? req.body.songIds : [];
+  if (!songIds.length) return res.status(400).json({ error: 'songIds is required' });
+  try {
+    const current = await db`SELECT song_id FROM sunday_songs`;
+    const currentIds = new Set(current.map(r => r.song_id));
+    if (songIds.length !== currentIds.size || !songIds.every(id => currentIds.has(id))) {
+      return res.status(400).json({ error: 'songIds must match the current Sunday set exactly' });
+    }
+    await db.begin(async tx => {
+      for (let i = 0; i < songIds.length; i++) {
+        await tx`UPDATE sunday_songs SET position = ${i + 1} WHERE song_id = ${songIds[i]}`;
+      }
+    });
+    await regenerateSundaySetFile(getDriveClient());
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/sunday-songs/:songId', requireAdmin, async (req, res) => {
+  try {
+    await db.begin(async tx => {
+      await tx`DELETE FROM sunday_songs WHERE song_id = ${req.params.songId}`;
+      const remaining = await tx`SELECT song_id FROM sunday_songs ORDER BY position`;
+      for (let i = 0; i < remaining.length; i++) {
+        await tx`UPDATE sunday_songs SET position = ${i + 1} WHERE song_id = ${remaining[i].song_id}`;
+      }
+    });
+    await regenerateSundaySetFile(getDriveClient());
+    res.json({ ok: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

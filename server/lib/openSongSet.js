@@ -16,23 +16,11 @@ function buildSlideGroup({ openSongId, title, singerName }) {
   return `  <slide_group name="${escapeXmlAttr(name)}" type="song" presentation="" path="${escapeXmlAttr(singerName)}/"/>`;
 }
 
-function parseSlideGroups(xml) {
-  if (!xml) return [];
-  return xml.match(/ *<slide_group[^>]*\/>/g) || [];
+// Rebuilds a full OpenSong set file from an ordered list of songs - used for the
+// Sunday set list, whose Postgres row order is always the source of truth.
+function buildSetXml(setName, entries) {
+  const lines = entries.map(buildSlideGroup);
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<set name="${escapeXmlAttr(setName)}">\n  <slide_groups>\n${lines.join('\n')}\n</slide_groups></set>`;
 }
 
-function slideGroupNameAttr(line) {
-  const match = line.match(/name="([^"]*)"/);
-  return match ? match[1] : null;
-}
-
-// Rebuilds the whole Today.txt set, dropping any earlier entry for the same
-// song (by exported filename) so a re-export doesn't duplicate it in the list.
-function buildTodaySetXml(existingXml, newEntry) {
-  const targetName = slideGroupNameAttr(newEntry);
-  const lines = parseSlideGroups(existingXml).filter(line => slideGroupNameAttr(line) !== targetName);
-  lines.push(newEntry);
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<set name="Today">\n  <slide_groups>\n${lines.join('\n')}\n</slide_groups></set>`;
-}
-
-module.exports = { buildSlideGroup, buildTodaySetXml };
+module.exports = { buildSlideGroup, buildSetXml };

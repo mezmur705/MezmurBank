@@ -133,12 +133,13 @@ export default function SongDetail({ route }: Props) {
     }
     setExportingDrive(true);
     try {
-      const { webViewLink, updated } = await exportToDrive(songId, session.access_token);
+      const { webViewLink, updated, sundayDate } = await exportToDrive(songId, session.access_token);
+      const base = updated
+        ? 'This song was already on Drive - the file was updated.'
+        : 'The OpenSong-format file was saved to Drive.';
       Alert.alert(
         updated ? 'Already exported' : 'Exported',
-        updated
-          ? 'This song was already on Drive - the file was updated.'
-          : 'The OpenSong-format file was saved to Drive.',
+        sundayDate ? `${base} Added to the Sunday Songs list for ${sundayDate}.` : base,
         [
           { text: 'Open', onPress: () => Linking.openURL(webViewLink) },
           { text: 'OK' },

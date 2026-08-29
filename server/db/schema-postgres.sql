@@ -78,6 +78,19 @@ create table if not exists public.recently_viewed (
 create index if not exists ix_recently_viewed_user_viewed_at
     on public.recently_viewed(user_id, viewed_at desc);
 
+-- The admin-curated set list for the next upcoming Sunday service. One shared list
+-- (not per-user); position controls display/export order and is reassigned whenever
+-- a song is added, reordered, or removed.
+create table if not exists public.sunday_songs (
+    id serial primary key,
+    song_id text not null references public.songs(id) on delete cascade,
+    position int not null,
+    added_at timestamptz not null default now()
+);
+
+create unique index if not exists ux_sunday_songs_song_id on public.sunday_songs(song_id);
+create index if not exists ix_sunday_songs_position on public.sunday_songs(position);
+
 -- Auto-creates a profiles row the moment a user first authenticates (via OAuth), since
 -- profiles.id is a strict FK that favorites/comments/recently_viewed all depend on, and
 -- there is no profiles_self_insert RLS policy for the client to upsert one itself.
@@ -108,6 +121,7 @@ alter table public.profiles enable row level security;
 alter table public.favorites enable row level security;
 alter table public.push_tokens enable row level security;
 alter table public.recently_viewed enable row level security;
+alter table public.sunday_songs enable row level security;
 
 drop policy if exists singers_public_read on public.singers;
 create policy singers_public_read on public.singers for select using (true);
@@ -153,3 +167,11 @@ create policy push_tokens_owner_all on public.push_tokens for all
 drop policy if exists recently_viewed_owner_all on public.recently_viewed;
 create policy recently_viewed_owner_all on public.recently_viewed for all
     using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists sunday_songs_public_read on public.sunday_songs;
+create policy sunday_songs_public_read on public.sunday_songs for select using (true);
+
+drop policy if exists sunday_songs_admin_write on public.sunday_songs;
+create policy sunday_songs_admin_write on public.sunday_songs for all
+    using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'moderator')))
+    with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'moderator')));
