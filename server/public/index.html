@@ -577,14 +577,16 @@
     }
 
     async function loadSundaySongsList() {
-      const container = document.getElementById('sundaySongsContainer');
+      if (!document.getElementById('sundaySongsContainer')) return; // user navigated away meanwhile
       try {
         const res = await fetch('/api/sunday-songs');
         const items = await res.json();
         if (!res.ok) throw new Error(items.error || 'Failed to load Sunday songs.');
-        renderSundaySongsList(container, items);
+        const container = document.getElementById('sundaySongsContainer');
+        if (container) renderSundaySongsList(container, items);
       } catch (err) {
-        container.innerHTML = `<p class="comment-hint">Could not load Sunday songs: ${escapeHtml(err.message)}</p>`;
+        const container = document.getElementById('sundaySongsContainer');
+        if (container) container.innerHTML = `<p class="comment-hint">Could not load Sunday songs: ${escapeHtml(err.message)}</p>`;
       }
     }
 
@@ -613,6 +615,7 @@
 
     async function moveSundaySong(index, direction) {
       const container = document.getElementById('sundaySongsContainer');
+      if (!container) return;
       const songIds = JSON.parse(container.dataset.songIds || '[]');
       const target = index + direction;
       if (target < 0 || target >= songIds.length) return;
