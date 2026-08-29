@@ -491,7 +491,8 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Export failed.');
-        if (confirm('Exported to Drive. Open the file now?')) window.open(data.webViewLink, '_blank');
+        const message = data.updated ? 'Already exported - updated the existing Drive file.' : 'Exported to Drive.';
+        if (confirm(`${message} Open the file now?`)) window.open(data.webViewLink, '_blank');
       } catch (err) {
         alert('Export failed: ' + err.message);
       } finally {

@@ -336,6 +336,43 @@ app.get('/api/drive-exports', async (req, res) => {
   }
 });
 
+// Matches the <root folder>/<Singer>/<OpenSongID>_<Title>.txt layout used by the bulk
+// export scripts (export-all-to-drive.js, refresh-drive-exports.js), so a single-song
+// export from the web app lands next to - and is recognized as a re-export of - files
+// created by those scripts rather than piling up flat duplicates in the root folder.
+function escapeForDriveQuery(name) {
+  return name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function findOrCreateDriveFolder(drive, name, parentId) {
+  const escaped = escapeForDriveQuery(name);
+  const list = await drive.files.list({
+    q: `'${parentId}' in parents and name = '${escaped}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: 'files(id)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  if (list.data.files && list.data.files.length) return list.data.files[0].id;
+
+  const created = await drive.files.create({
+    requestBody: { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
+    supportsAllDrives: true,
+    fields: 'id',
+  });
+  return created.data.id;
+}
+
+async function findDriveFile(drive, name, parentId) {
+  const escaped = escapeForDriveQuery(name);
+  const list = await drive.files.list({
+    q: `'${parentId}' in parents and name = '${escaped}' and trashed = false`,
+    fields: 'files(id)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  return list.data.files && list.data.files[0] ? list.data.files[0].id : null;
+}
+
 app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) => {
   try {
     const rows = await db`
@@ -347,15 +384,22 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
     if (!rows.length) return res.status(404).json({ error: 'Song not found' });
     const { title, open_song_id, open_song_format, singer_name } = rows[0];
     const xml = buildOpenSongXml({ title, singerName: singer_name, openSongId: open_song_id, lyricsBody: open_song_format });
+    const fileName = `${open_song_id}_${title}.txt`;
 
     const drive = getDriveClient();
+    const folderId = await findOrCreateDriveFolder(drive, singer_name, process.env.GOOGLE_DRIVE_FOLDER_ID);
+    const existingFileId = await findDriveFile(drive, fileName, folderId);
+
+    if (existingFileId) {
+      await drive.files.delete({ fileId: existingFileId, supportsAllDrives: true });
+    }
     const file = await drive.files.create({
-      requestBody: { name: `${open_song_id}_${title}.txt`, parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] },
+      requestBody: { name: fileName, parents: [folderId] },
       media: { mimeType: 'text/plain', body: xml },
       supportsAllDrives: true,
       fields: 'id, webViewLink',
     });
-    res.json({ ok: true, fileId: file.data.id, webViewLink: file.data.webViewLink });
+    res.json({ ok: true, fileId: file.data.id, webViewLink: file.data.webViewLink, updated: !!existingFileId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
