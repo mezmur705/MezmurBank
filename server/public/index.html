@@ -156,7 +156,8 @@
     .account-menu-item:hover { background: #eef2ff; }
     .account-menu-item.destructive { color: #e53e3e; }
     .account-menu-divider { height: 1px; background: #e2e8f0; margin: 6px 0; }
-    .favorite-btn { background: none; border: none; cursor: pointer; font-size: 1.2rem; padding: 4px 8px; line-height: 1; }
+    .favorite-btn { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; cursor: pointer; font-size: 1.1rem; padding: 6px 10px; line-height: 1; }
+    .favorite-btn:hover { background: #e2e8f0; }
     .export-drive-btn { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 0.9rem; color: #4a5568; display: inline-flex; align-items: center; gap: 5px; }
     .export-drive-btn:hover { background: #e2e8f0; }
     #signInModalOverlay .modal-box { max-width: 360px; text-align: center; }
@@ -384,6 +385,13 @@
     function closeAccountMenu() {
       document.getElementById('accountMenu').classList.remove('open');
     }
+    document.addEventListener('click', event => {
+      const menu = document.getElementById('accountMenu');
+      const btn = document.getElementById('accountBtn');
+      if (menu.classList.contains('open') && !menu.contains(event.target) && event.target !== btn) {
+        closeAccountMenu();
+      }
+    });
 
     function updateAuthUI() {
       const authItem = document.getElementById('authMenuItem');
