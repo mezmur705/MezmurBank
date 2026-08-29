@@ -1,6 +1,7 @@
 # Secrets - never commit
 .env
 server/.env
+mobile/.env
 server/google-oauth-client.json
 server/google-oauth-token.json
 server/google-oauth-client-export.json
