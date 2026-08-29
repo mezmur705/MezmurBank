@@ -1,7 +1,6 @@
 require('dotenv').config();
 const path = require('path');
 const express = require('express');
-const session = require('express-session');
 const postgres = require('postgres');
 const { requireSupabaseUser, verifySupabaseToken } = require('./lib/supabaseAuth');
 const { getDriveClient } = require('./lib/googleDrive');
@@ -44,12 +43,11 @@ function extractYoutubeId(input) {
   return undefined;
 }
 
-// Emails in ADMIN_EMAILS get admin rights on the web app just by signing in with Google,
-// with no separate password - alongside the existing password-based session login.
+// Emails in ADMIN_EMAILS get admin rights on the web app just by signing in with Google -
+// there is no separate admin password.
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 
 async function isAdminRequest(req) {
-  if (req.session.isAdmin) return true;
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token || !ADMIN_EMAILS.length) return false;
@@ -69,12 +67,6 @@ function requireAdmin(req, res, next) {
 }
 
 app.use(express.json({ limit: '10mb' }));
-app.use(session({
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: { httpOnly: true, maxAge: 1000 * 60 * 60 * 8 }
-}));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/vendor/pptxgenjs', express.static(path.join(__dirname, 'node_modules/pptxgenjs/dist')));
 app.use('/vendor/jszip', express.static(path.join(__dirname, 'node_modules/jszip/dist')));
@@ -90,19 +82,6 @@ app.use('/api', (req, res, next) => {
 
 app.get('/api/admin/status', async (req, res) => {
   res.json({ isAdmin: await isAdminRequest(req) });
-});
-
-app.post('/api/admin/login', (req, res) => {
-  const { password } = req.body || {};
-  if (password && password === process.env.ADMIN_PASSWORD) {
-    req.session.isAdmin = true;
-    return res.json({ ok: true });
-  }
-  res.status(401).json({ error: 'Incorrect password' });
-});
-
-app.post('/api/admin/logout', (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
 });
 
 async function upsertSinger(tx, name) {
