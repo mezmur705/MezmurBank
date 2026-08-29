@@ -419,7 +419,8 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
     });
 
     const slideGroup = buildSlideGroup({ openSongId: open_song_id, title, singerName: singer_name });
-    const todayFileId = await findDriveFile(drive, 'Today.txt', process.env.GOOGLE_DRIVE_FOLDER_ID);
+    const todayFolderId = process.env.GOOGLE_DRIVE_TODAY_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID;
+    const todayFileId = await findDriveFile(drive, 'Today.txt', todayFolderId);
     let existingTodayXml = '';
     if (todayFileId) {
       const existing = await drive.files.get({ fileId: todayFileId, alt: 'media' }, { responseType: 'text' });
@@ -434,7 +435,7 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
       });
     } else {
       await drive.files.create({
-        requestBody: { name: 'Today.txt', parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] },
+        requestBody: { name: 'Today.txt', parents: [todayFolderId] },
         media: { mimeType: 'text/plain', body: todayXml },
         supportsAllDrives: true,
         fields: 'id',
