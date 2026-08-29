@@ -929,7 +929,9 @@
         const singerMatches = !query || singer.singer.toLowerCase().includes(query) || (singer.singerAmharic && singer.singerAmharic.toLowerCase().includes(query));
         const songs = singer.songs.filter(song => {
           if (!query || singerMatches) return true;
-          return song.title.toLowerCase().includes(query) || song.lyrics.toLowerCase().includes(query);
+          return song.title.toLowerCase().includes(query)
+            || song.lyrics.toLowerCase().includes(query)
+            || (song.openSongId != null && String(song.openSongId).includes(query));
         });
         if (songs.length) groups.push({ singer: singer.singer, singerAmharic: singer.singerAmharic, songs });
       });
