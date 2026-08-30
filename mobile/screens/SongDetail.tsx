@@ -208,6 +208,11 @@ export default function SongDetail({ route }: Props) {
         {song.singers?.name}
         {song.singers?.amharic_name ? `  •  ${song.singers.amharic_name}` : ''}
       </Text>
+      {song.source_url ? (
+        <Text style={styles.sourceCredit} onPress={() => Linking.openURL(song.source_url!)}>
+          Source: {song.source_name || 'External source'} (CC BY-SA)
+        </Text>
+      ) : null}
 
       {song.youtube_video_id ? (
         <View style={styles.playerWrap}>
@@ -341,6 +346,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   singer: { fontSize: 15, color: colors.textSecondary, marginTop: 4, marginBottom: 16 },
+  sourceCredit: { fontSize: 12, color: colors.textSecondary, marginTop: -12, marginBottom: 16, textDecorationLine: 'underline' },
   playerWrap: { marginBottom: 16, borderRadius: 8, overflow: 'hidden' },
   lyricsCard: {
     backgroundColor: colors.surface,

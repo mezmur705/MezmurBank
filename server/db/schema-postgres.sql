@@ -36,6 +36,11 @@ create index if not exists ix_songs_singer_id on public.songs(singer_id);
 create sequence if not exists public.open_song_id_seq;
 alter table public.songs alter column open_song_id set default nextval('public.open_song_id_seq');
 
+-- Attribution for songs imported from a CC-licensed external source (e.g. WikiMezmur) -
+-- shown as a credit link in both apps to satisfy that source's attribution requirement.
+alter table public.songs add column if not exists source_name text;
+alter table public.songs add column if not exists source_url text;
+
 create table if not exists public.profiles (
     id uuid primary key references auth.users(id) on delete cascade,
     display_name text,

@@ -14,6 +14,8 @@ export interface Song {
   youtube_video_id: string | null;
   media_url: string | null;
   open_song_format: string | null;
+  source_name: string | null;
+  source_url: string | null;
   view_count: number;
   like_count: number;
   love_count: number;
