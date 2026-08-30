@@ -502,7 +502,8 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Export failed.');
         const message = (data.updated ? 'Already exported - updated the existing Drive file.' : 'Exported to Drive.') +
-          (data.sundayDate ? ` Added to the Sunday Songs list for ${data.sundayDate}.` : '');
+          (data.sundayDate ? ` Added to the Sunday Songs list for ${data.sundayDate}.` : '') +
+          (data.sundayError ? ` (Sunday list update failed: ${data.sundayError})` : '');
         if (confirm(`${message} Open the file now?`)) window.open(data.webViewLink, '_blank');
       } catch (err) {
         alert('Export failed: ' + err.message);

@@ -454,14 +454,23 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
       fields: 'id, webViewLink',
     });
 
-    const alreadyOnSunday = await db`SELECT 1 FROM sunday_songs WHERE song_id = ${req.params.id}`;
-    if (!alreadyOnSunday.length) {
-      const [{ max_pos }] = await db`SELECT COALESCE(MAX(position), 0) AS max_pos FROM sunday_songs`;
-      await db`INSERT INTO sunday_songs (song_id, position) VALUES (${req.params.id}, ${max_pos + 1})`;
+    // Adding to the Sunday set is best-effort - a failure here (e.g. a transient Drive
+    // error) must not make the browser think the song file itself failed to export.
+    let sundayDate = null;
+    let sundayError = null;
+    try {
+      const alreadyOnSunday = await db`SELECT 1 FROM sunday_songs WHERE song_id = ${req.params.id}`;
+      if (!alreadyOnSunday.length) {
+        const [{ max_pos }] = await db`SELECT COALESCE(MAX(position), 0) AS max_pos FROM sunday_songs`;
+        await db`INSERT INTO sunday_songs (song_id, position) VALUES (${req.params.id}, ${max_pos + 1})`;
+      }
+      sundayDate = await regenerateSundaySetFile(drive);
+    } catch (sundayErr) {
+      console.error('Sunday set update failed:', sundayErr);
+      sundayError = sundayErr.message;
     }
-    const sundayDate = await regenerateSundaySetFile(drive);
 
-    res.json({ ok: true, fileId: file.data.id, webViewLink: file.data.webViewLink, updated: !!existingFileId, sundayDate });
+    res.json({ ok: true, fileId: file.data.id, webViewLink: file.data.webViewLink, updated: !!existingFileId, sundayDate, sundayError });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
