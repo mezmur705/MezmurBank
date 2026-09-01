@@ -1102,7 +1102,7 @@ function upcomingSundays() {
         if (data.videoId) {
           container.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.videoId}" allowfullscreen></iframe>`;
           if (data.confirmed) {
-            if (isAdmin) confirmRow.innerHTML = `<div style="color:#276749; font-size:0.85rem; font-weight:600;">✅ Confirmed</div>`;
+            confirmRow.innerHTML = `<div style="color:#276749; font-size:0.85rem; font-weight:600;">✅ Confirmed</div>`;
           } else {
             const notice = `<div style="color:#975a16; font-size:0.8rem; margin-bottom:6px;">⏳ Not yet confirmed - auto-found match, please review</div>`;
             confirmRow.innerHTML = isAdmin
