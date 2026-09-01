@@ -49,6 +49,10 @@ update public.songs set created_at = '2020-01-01T00:00:00Z' where created_at is 
 alter table public.songs alter column created_at set not null;
 alter table public.songs alter column created_at set default now();
 
+-- Auto YouTube search caches its match here first; an admin must confirm it (copying it
+-- into youtube_video_id) before it's treated as the song's real video and shown to everyone.
+alter table public.songs add column if not exists youtube_suggested_id varchar(20);
+
 create table if not exists public.profiles (
     id uuid primary key references auth.users(id) on delete cascade,
     display_name text,

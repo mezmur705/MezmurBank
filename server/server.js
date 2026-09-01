@@ -596,7 +596,7 @@ app.delete('/api/sunday-songs/:songId', requireAdmin, async (req, res) => {
 app.get('/api/mezmurs/:id/youtube', async (req, res) => {
   try {
     const found = await db`
-      SELECT s.title, s.lyrics, s.youtube_video_id, sg.name AS singer
+      SELECT s.title, s.lyrics, s.youtube_video_id, s.youtube_suggested_id, sg.name AS singer
       FROM songs s
       JOIN singers sg ON s.singer_id = sg.id
       WHERE s.id = ${req.params.id}
@@ -604,13 +604,18 @@ app.get('/api/mezmurs/:id/youtube', async (req, res) => {
     if (!found.length) return res.status(404).json({ error: 'Song not found' });
     const song = found[0];
 
-    // Already resolved (empty string means "searched, nothing found" - don't retry).
+    // Already admin-confirmed (empty string means "searched, nothing found" - don't retry).
     if (song.youtube_video_id !== null) {
-      return res.json({ videoId: song.youtube_video_id || null, configured: true });
+      return res.json({ videoId: song.youtube_video_id || null, configured: true, confirmed: true });
+    }
+
+    // Already have a cached auto-search suggestion awaiting admin confirmation - don't re-search.
+    if (song.youtube_suggested_id !== null) {
+      return res.json({ videoId: song.youtube_suggested_id || null, configured: true, confirmed: false });
     }
 
     if (!process.env.YOUTUBE_API_KEY) {
-      return res.json({ videoId: null, configured: false });
+      return res.json({ videoId: null, configured: false, confirmed: false });
     }
 
     const query = `${song.singer} ${firstLyricLines(song.lyrics, 7)}`;
@@ -619,13 +624,30 @@ app.get('/api/mezmurs/:id/youtube', async (req, res) => {
     const ytData = await ytRes.json();
     if (!ytRes.ok) {
       console.error('YouTube API error:', ytData.error?.message || ytRes.status);
-      return res.json({ videoId: null, configured: true, error: ytData.error?.message });
+      return res.json({ videoId: null, configured: true, confirmed: false, error: ytData.error?.message });
     }
     const videoId = ytData.items?.[0]?.id?.videoId || '';
 
-    await db`UPDATE songs SET youtube_video_id = ${videoId} WHERE id = ${req.params.id}`;
+    await db`UPDATE songs SET youtube_suggested_id = ${videoId} WHERE id = ${req.params.id}`;
 
-    res.json({ videoId: videoId || null, configured: true });
+    res.json({ videoId: videoId || null, configured: true, confirmed: false });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin review step: promotes the cached auto-search suggestion into youtube_video_id, the
+// field everyone else sees. Nothing is shown to regular users until an admin does this.
+app.post('/api/mezmurs/:id/youtube/confirm', requireAdmin, async (req, res) => {
+  try {
+    const found = await db`SELECT youtube_suggested_id FROM songs WHERE id = ${req.params.id}`;
+    if (!found.length) return res.status(404).json({ error: 'Song not found' });
+    const suggested = found[0].youtube_suggested_id;
+    if (suggested === null) return res.status(400).json({ error: 'No YouTube suggestion to confirm for this song' });
+
+    await db`UPDATE songs SET youtube_video_id = ${suggested} WHERE id = ${req.params.id}`;
+    res.json({ videoId: suggested || null, confirmed: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

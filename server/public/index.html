@@ -24,7 +24,8 @@
       position: relative;
       z-index: 100;
     }
-    .brand { font-size: 1.4rem; font-weight: bold; color: #63b3ed; display: flex; align-items: center; gap: 8px; }
+    .brand { font-size: 1.4rem; font-weight: bold; color: #63b3ed; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .brand:hover { opacity: 0.85; }
     .search-tools { display: flex; gap: 10px; align-items: center; }
     .search-tools input { padding: 8px 12px; border: 2px solid transparent; border-radius: 4px; width: 200px; outline: none; }
     .search-tools input:focus { border-color: #63b3ed; }
@@ -189,10 +190,11 @@
 </head>
 <body>
   <header>
-    <div class="brand">
-      <svg width="26" height="26" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect x="42.35" y="12.53" width="15.3" height="64.6" rx="2.72" fill="#63b3ed"/>
-        <rect x="21.95" y="30.62" width="56.1" height="15.3" rx="2.72" fill="#63b3ed"/>
+    <div class="brand" onclick="goHome()" title="Go to homepage">
+      <svg width="28" height="28" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="50" cy="50" r="48" fill="#ffffff"/>
+        <rect x="44.42" y="22.67" width="11.16" height="47.12" rx="1.98" fill="#2b6cb0"/>
+        <rect x="29.54" y="35.86" width="40.92" height="11.16" rx="1.98" fill="#2b6cb0"/>
       </svg>
       Mezmurify
     </div>
@@ -229,6 +231,7 @@
       <h3>Media Search</h3>
       <p style="font-size: 0.85rem; color: #718096; margin-top: 5px;">Select a Mezmur to auto-generate YouTube search video.</p>
       <div class="youtube-container" id="youtubeContainer"><div style="color: white; text-align: center; padding-top: 100px;">No video loaded</div></div>
+      <div id="youtubeConfirmRow" style="margin-top:8px;"></div>
       <div class="opensong-panel" id="openSongFormatPanel" style="display:none;"></div>
     </div>
   </div>
@@ -847,6 +850,12 @@ function upcomingSundays() {
       <h2>Welcome to Mezmurify</h2>
       <p>Select a singer from the left navigation or search for a specific mezmur to display lyrics here.</p>
     `;
+    function goHome() {
+      closeAccountMenu();
+      document.getElementById('searchAll').value = '';
+      filterAll();
+      window.scrollTo(0, 0);
+    }
     function showWelcome() {
       const middleFrame = document.getElementById('middleFrame');
       middleFrame.innerHTML = WELCOME_HTML;
@@ -1084,12 +1093,18 @@ function upcomingSundays() {
 
     async function loadYouTubeFrame(song, singerName) {
       const container = document.getElementById('youtubeContainer');
+      const confirmRow = document.getElementById('youtubeConfirmRow');
+      confirmRow.innerHTML = '';
       container.innerHTML = '<div style="color:white; text-align:center; padding-top:100px;">Searching YouTube…</div>';
       try {
         const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube`);
         const data = await res.json();
         if (data.videoId) {
           container.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.videoId}" allowfullscreen></iframe>`;
+          if (isAdmin && !data.confirmed) {
+            confirmRow.innerHTML = `<button class="keyboard-btn" id="confirmYoutubeBtn" style="width:100%; justify-content:center;">✅ Confirm this is the right video</button>`;
+            document.getElementById('confirmYoutubeBtn').onclick = () => confirmYoutubeLink(song, singerName);
+          }
           return;
         }
         // No YouTube video found (or not searched yet) - play the MediaUrl in its place, if any.
@@ -1098,6 +1113,25 @@ function upcomingSundays() {
           : '<div style="color:white; text-align:center; padding-top:100px;">No video available</div>';
       } catch (err) {
         container.innerHTML = '<div style="color:white; text-align:center; padding-top:100px;">Could not reach the server.</div>';
+      }
+    }
+
+    // Auto-search only caches a suggested match; an admin must confirm it before it's saved
+    // as the song's real YouTube link and shown to everyone else.
+    async function confirmYoutubeLink(song, singerName) {
+      const btn = document.getElementById('confirmYoutubeBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try {
+        const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube/confirm`, {
+          method: 'POST', headers: authHeaders()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Server responded ${res.status}`);
+        song.youtubeVideoId = data.videoId;
+        displayLyric(song, singerName);
+      } catch (err) {
+        alert('Could not save the YouTube link: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = '✅ Confirm this is the right video'; }
       }
     }
     // Single search box: matches singer name/Amharic name (pulling in all their songs)
