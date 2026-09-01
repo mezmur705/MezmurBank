@@ -37,7 +37,7 @@ def is_tag_line(line: str) -> bool:
 def clean_tag_line(line: str) -> str:
     line = re.sub(r"(?i)^\s*(?:title|artist)\s*:\s*", "", line)
     line = re.sub(r"^[^\w#]{0,4}#", "", line)
-    line = line.replace("_", " ").replace(":", " ")
+    line = line.replace("_", " ").replace(":", "")
     return re.sub(r"\s+", " ", line).strip()
 
 

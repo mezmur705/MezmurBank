@@ -10,6 +10,12 @@ import type { SongWithSinger } from '../types/models';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SongsList'>;
 
+const NEW_BADGE_DAYS = 5;
+function isNewSong(song: SongWithSinger): boolean {
+  const ageMs = Date.now() - new Date(song.created_at).getTime();
+  return ageMs < NEW_BADGE_DAYS * 24 * 60 * 60 * 1000;
+}
+
 export default function SongsList({ route, navigation }: Props) {
   const { singerId, singerName, query = '' } = route.params;
   const { songs } = useLibrary();
@@ -29,6 +35,11 @@ export default function SongsList({ route, navigation }: Props) {
         <Text style={styles.indexText}>{index + 1}</Text>
       </View>
       <HighlightText text={item.title} query={query} style={styles.title} />
+      {isNewSong(item) ? (
+        <View style={styles.newBadge}>
+          <Text style={styles.newBadgeText}>NEW</Text>
+        </View>
+      ) : null}
       {item.youtube_video_id ? (
         <MaterialCommunityIcons name="youtube" size={18} color="#FF0000" style={styles.youtubeIcon} />
       ) : null}
@@ -69,6 +80,14 @@ const styles = StyleSheet.create({
   },
   indexText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   title: { fontSize: 16, color: colors.textPrimary, flex: 1 },
+  newBadge: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginLeft: 8,
+  },
+  newBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
   youtubeIcon: { marginLeft: 8 },
   empty: { textAlign: 'center', marginTop: 24, color: colors.textSecondary },
 });

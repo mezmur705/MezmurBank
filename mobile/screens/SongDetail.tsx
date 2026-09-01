@@ -23,6 +23,8 @@ import type { Comment } from '../types/models';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SongDetail'>;
 
+const NEW_BADGE_DAYS = 5;
+
 const REACTIONS: { key: 'like_count' | 'love_count' | 'haha_count' | 'wow_count' | 'sad_count' | 'angry_count'; emoji: string; label: string }[] = [
   { key: 'like_count', emoji: '👍', label: 'Like' },
   { key: 'love_count', emoji: '❤️', label: 'Love' },
@@ -201,9 +203,18 @@ export default function SongDetail({ route }: Props) {
     }
   };
 
+  const isNew = Date.now() - new Date(song.created_at).getTime() < NEW_BADGE_DAYS * 24 * 60 * 60 * 1000;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <HighlightText text={song.title} query={query} style={styles.title} numberOfLines={1} ellipsizeMode="tail" />
+      <View style={styles.titleRow}>
+        <HighlightText text={song.title} query={query} style={styles.title} numberOfLines={1} ellipsizeMode="tail" />
+        {isNew ? (
+          <View style={styles.newBadge}>
+            <Text style={styles.newBadgeText}>NEW</Text>
+          </View>
+        ) : null}
+      </View>
       <Text style={styles.singer}>
         {song.singers?.name}
         {song.singers?.amharic_name ? `  •  ${song.singers.amharic_name}` : ''}
@@ -335,7 +346,16 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   notFound: { color: colors.textPrimary },
   content: { padding: 16, paddingBottom: 40 },
-  title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary },
+  titleRow: { flexDirection: 'row', alignItems: 'center' },
+  title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, flexShrink: 1 },
+  newBadge: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginLeft: 8,
+  },
+  newBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
   iconRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   shareButton: {
     width: 36,

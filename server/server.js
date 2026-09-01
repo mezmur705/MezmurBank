@@ -105,12 +105,12 @@ app.get('/api/mezmurs', async (req, res) => {
     const rows = await db`
       SELECT s.id, s.open_song_id, sg.id AS singer_id, sg.name AS singer, sg.amharic_name AS singer_amharic,
              s.title, s.lyrics, s.language, s.open_song_format, s.youtube_video_id, s.media_url,
-             s.source_name, s.source_url
+             s.source_name, s.source_url, s.created_at
       FROM songs s
       JOIN singers sg ON s.singer_id = sg.id
       ORDER BY sg.name, s.title
     `;
-    res.json(rows.map(r => ({ id: r.id, openSongId: r.open_song_id, singerId: r.singer_id, singer: r.singer, singerAmharic: r.singer_amharic, title: r.title, lyrics: r.lyrics, language: r.language, openSongFormat: r.open_song_format, youtubeVideoId: r.youtube_video_id, mediaUrl: r.media_url, sourceName: r.source_name, sourceUrl: r.source_url })));
+    res.json(rows.map(r => ({ id: r.id, openSongId: r.open_song_id, singerId: r.singer_id, singer: r.singer, singerAmharic: r.singer_amharic, title: r.title, lyrics: r.lyrics, language: r.language, openSongFormat: r.open_song_format, youtubeVideoId: r.youtube_video_id, mediaUrl: r.media_url, sourceName: r.source_name, sourceUrl: r.source_url, createdAt: r.created_at })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

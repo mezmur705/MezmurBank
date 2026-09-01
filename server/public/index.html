@@ -29,6 +29,7 @@
     .search-tools input:focus { border-color: #63b3ed; }
     .search-tools select { padding: 8px 12px; border: 2px solid transparent; border-radius: 4px; outline: none; background: white; }
     .lang-badge { display: inline-block; flex-shrink: 0; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 2px 7px; border-radius: 10px; background: #ebf8ff; color: #2b6cb0; margin-left: 8px; vertical-align: middle; }
+    .new-badge { display: inline-block; flex-shrink: 0; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 2px 7px; border-radius: 10px; background: #f0fff4; color: #276749; margin-left: 8px; vertical-align: middle; }
     .media-status-icon { display: inline-flex; flex-shrink: 0; align-items: center; margin-left: 6px; vertical-align: middle; }
     .media-status-icon svg { display: block; }
     .amharic-name { font-weight: 400; opacity: 0.75; margin-left: 6px; }
@@ -195,6 +196,7 @@
       <div class="account-menu-item" onclick="showRecentlyViewedView()">🕘 Recently Viewed</div>
       <div class="account-menu-item" onclick="showDriveExportsView()">📁 Exported Files</div>
       <div class="account-menu-item" onclick="showSundaySongsView()">🗓️ Sunday Songs</div>
+      <div class="account-menu-item" onclick="showNewSongsView()">🆕 New Songs</div>
       <div class="account-menu-divider admin-only"></div>
       <div class="account-menu-item admin-only" onclick="closeAccountMenu(); document.getElementById('songsFolder').click();">▣ Upload Songs Folder</div>
       <div class="account-menu-item admin-only" onclick="closeAccountMenu(); openAddSingerModal();">➕ Add Singer</div>
@@ -281,6 +283,16 @@
     // Amharic is the default/majority language, so only flag the exceptions (e.g. English).
     function langBadge(language) {
       return language === 'Amharic' ? '' : `<span class="lang-badge">${language}</span>`;
+    }
+
+    const NEW_BADGE_DAYS = 5;
+    function isNewSong(song) {
+      if (!song.createdAt) return false;
+      const ageMs = Date.now() - new Date(song.createdAt).getTime();
+      return ageMs < NEW_BADGE_DAYS * 24 * 60 * 60 * 1000;
+    }
+    function newBadge(song) {
+      return isNewSong(song) ? '<span class="new-badge">New</span>' : '';
     }
 
     const YOUTUBE_ICON_SVG = `<svg viewBox="0 0 24 24" width="15" height="15" xmlns="http://www.w3.org/2000/svg"><path fill="#FF0000" d="M23.498 6.186a2.999 2.999 0 0 0-2.113-2.117C19.505 3.5 12 3.5 12 3.5s-7.505 0-9.385.569A2.999 2.999 0 0 0 .502 6.186 31.6 31.6 0 0 0 0 12a31.6 31.6 0 0 0 .502 5.814 2.999 2.999 0 0 0 2.113 2.117C4.495 20.5 12 20.5 12 20.5s7.505 0 9.385-.569a2.999 2.999 0 0 0 2.113-2.117A31.6 31.6 0 0 0 24 12a31.6 31.6 0 0 0-.502-5.814z"/><path fill="#FFFFFF" d="M9.75 15.02V8.98L15.5 12l-5.75 3.02z"/></svg>`;
@@ -521,7 +533,7 @@
       const rootUl = document.createElement('ul'); rootUl.className = 'tree-root';
       entries.forEach(({ song, singerName }) => {
         const li = document.createElement('li'); li.className = 'tree-leaf';
-        li.innerHTML = `<span class="tree-icon">🎵</span><span class="tree-song-id">${formatOpenSongId(song.openSongId)}</span><span class="tree-label">${escapeHtml(song.title)}</span><span class="tree-count" style="margin-left:8px; font-weight:400;">${escapeHtml(singerName)}</span>${mediaIcon(song)}`;
+        li.innerHTML = `<span class="tree-icon">🎵</span><span class="tree-song-id">${formatOpenSongId(song.openSongId)}</span><span class="tree-label">${escapeHtml(song.title)}</span><span class="tree-count" style="margin-left:8px; font-weight:400;">${escapeHtml(singerName)}</span>${newBadge(song)}${mediaIcon(song)}`;
         li.onclick = () => displayLyric(song, singerName);
         rootUl.appendChild(li);
       });
@@ -568,6 +580,17 @@
       } catch (err) {
         container.innerHTML = `<p class="comment-hint">Could not load exported files: ${escapeHtml(err.message)}</p>`;
       }
+    }
+
+    function showNewSongsView() {
+      closeAccountMenu();
+      const middleFrame = document.getElementById('middleFrame');
+      middleFrame.innerHTML = `<h2>🆕 New Songs</h2><p class="comment-hint">Added in the last ${NEW_BADGE_DAYS} days.</p><div id="newSongsContainer" style="margin-top:15px;"></div>`;
+      const newest = [...songIndex.values()]
+        .filter(({ song }) => isNewSong(song))
+        .sort((a, b) => new Date(b.song.createdAt) - new Date(a.song.createdAt))
+        .map(({ song }) => song.id);
+      renderFlatSongList(document.getElementById('newSongsContainer'), newest, 'No new songs in the last ' + NEW_BADGE_DAYS + ' days.');
     }
 
     async function showSundaySongsView() {
@@ -873,7 +896,7 @@
           const leafLi = document.createElement('li'); leafLi.className = 'tree-leaf';
           leafLi.dataset.songId = song.id;
           if (song.id === selectedSongId) leafLi.classList.add('selected');
-          leafLi.innerHTML = `<span class="tree-icon">🎵</span><span class="tree-song-id">${formatOpenSongId(song.openSongId)}</span><span class="tree-label">${song.title}</span>${mediaIcon(song)}`;
+          leafLi.innerHTML = `<span class="tree-icon">🎵</span><span class="tree-song-id">${formatOpenSongId(song.openSongId)}</span><span class="tree-label">${song.title}</span>${newBadge(song)}${mediaIcon(song)}`;
           leafLi.onclick = event => { event.stopPropagation(); displayLyric(song, item.singer); leafLi.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
           ul.appendChild(leafLi);
         });
@@ -911,7 +934,7 @@
         const childUl = document.createElement('ul'); childUl.className = 'tree-children open';
         group.songs.forEach(song => {
           const leafLi = document.createElement('li'); leafLi.className = 'tree-leaf';
-          leafLi.innerHTML = `<span class="tree-icon">🎵</span><span class="tree-song-id">${formatOpenSongId(song.openSongId)}</span><span class="tree-label">${highlightText(song.title, query)}</span>${langBadge(song.language)}${mediaIcon(song)}<button class="delete-btn" title="Delete" onclick="event.stopPropagation(); deleteMezmur('${song.id}')">🗑</button>`;
+          leafLi.innerHTML = `<span class="tree-icon">🎵</span><span class="tree-song-id">${formatOpenSongId(song.openSongId)}</span><span class="tree-label">${highlightText(song.title, query)}</span>${langBadge(song.language)}${newBadge(song)}${mediaIcon(song)}<button class="delete-btn" title="Delete" onclick="event.stopPropagation(); deleteMezmur('${song.id}')">🗑</button>`;
           leafLi.onclick = () => displayLyric(song, group.singer);
           childUl.appendChild(leafLi);
         });
@@ -933,7 +956,7 @@
       const query = document.getElementById('searchAll').value;
       const singerEntry = mezmurData.find(item => item.singer === singerName);
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = `<div class="opensong-id">OpenSongID: ${formatOpenSongId(song.openSongId)}</div><button class="opensong-corner-btn" id="openSongFormatBtn" title="Open in PowerPoint">🖥️</button><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}">${highlightText(song.title, query)}${langBadge(song.language)}</h2><h4 class="singer-line" style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4>${song.sourceUrl ? `<p class="comment-hint" style="margin-top:-10px;">Source: <a href="${escapeHtml(song.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(song.sourceName || 'External source')}</a> (CC BY-SA)</p>` : ''}</div><div style="display:flex; gap:8px; align-items:center; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive and add to Sunday Songs">${DRIVE_ICON_SVG}</button><button class="edit-btn-inline" id="editSongBtn" title="Edit">✏️</button><button class="delete-btn-inline" title="Delete" onclick="deleteMezmur('${song.id}')">🗑</button></div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
+      middleFrame.innerHTML = `<div class="opensong-id">OpenSongID: ${formatOpenSongId(song.openSongId)}</div><button class="opensong-corner-btn" id="openSongFormatBtn" title="Open in PowerPoint">🖥️</button><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}">${highlightText(song.title, query)}${langBadge(song.language)}${newBadge(song)}</h2><h4 class="singer-line" style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4>${song.sourceUrl ? `<p class="comment-hint" style="margin-top:-10px;">Source: <a href="${escapeHtml(song.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(song.sourceName || 'External source')}</a> (CC BY-SA)</p>` : ''}</div><div style="display:flex; gap:8px; align-items:center; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive and add to Sunday Songs">${DRIVE_ICON_SVG}</button><button class="edit-btn-inline" id="editSongBtn" title="Edit">✏️</button><button class="delete-btn-inline" title="Delete" onclick="deleteMezmur('${song.id}')">🗑</button></div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
         <div class="engagement-bar">
           <span class="view-count" id="viewCountLabel">👁 — views</span>
           <div class="reaction-row" id="reactionRow">
