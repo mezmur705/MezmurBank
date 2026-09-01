@@ -1101,11 +1101,14 @@ function upcomingSundays() {
         const data = await res.json();
         if (data.videoId) {
           container.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.videoId}" allowfullscreen></iframe>`;
-          if (isAdmin) {
-            confirmRow.innerHTML = data.confirmed
-              ? `<div style="color:#276749; font-size:0.85rem; font-weight:600;">✅ Confirmed</div>`
-              : `<div style="color:#975a16; font-size:0.8rem; margin-bottom:6px;">⏳ Not yet confirmed - auto-found match, please review</div><button class="keyboard-btn" id="confirmYoutubeBtn" style="width:100%; justify-content:center;">✅ Confirm this is the right video</button>`;
-            if (!data.confirmed) document.getElementById('confirmYoutubeBtn').onclick = () => confirmYoutubeLink(song, singerName);
+          if (data.confirmed) {
+            if (isAdmin) confirmRow.innerHTML = `<div style="color:#276749; font-size:0.85rem; font-weight:600;">✅ Confirmed</div>`;
+          } else {
+            const notice = `<div style="color:#975a16; font-size:0.8rem; margin-bottom:6px;">⏳ Not yet confirmed - auto-found match, please review</div>`;
+            confirmRow.innerHTML = isAdmin
+              ? `${notice}<button class="keyboard-btn" id="confirmYoutubeBtn" style="width:100%; justify-content:center;">✅ Confirm this is the right video</button>`
+              : notice;
+            if (isAdmin) document.getElementById('confirmYoutubeBtn').onclick = () => confirmYoutubeLink(song, singerName);
           }
           return;
         }
