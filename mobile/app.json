@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "Mezmurify",
     "slug": "mobile",
     "version": "1.0.0",
     "scheme": "mezmurify",
@@ -25,7 +25,8 @@
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ],
-      "package": "com.mezmur705.mobile"
+      "package": "com.mezmur705.mobile",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png"
