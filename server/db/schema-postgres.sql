@@ -91,9 +91,10 @@ create table if not exists public.recently_viewed (
 create index if not exists ix_recently_viewed_user_viewed_at
     on public.recently_viewed(user_id, viewed_at desc);
 
--- The admin-curated set list for the next upcoming Sunday service. One shared list
--- (not per-user); position controls display/export order and is reassigned whenever
--- a song is added, reordered, or removed.
+-- The admin-curated set list for a given Sunday service. One shared list per date
+-- (not per-user); position controls display/export order within that date and is
+-- reassigned whenever a song is added, reordered, or removed from it. Admins can plan
+-- up to a month of upcoming Sundays ahead; everyone else can only add to the nearest one.
 create table if not exists public.sunday_songs (
     id serial primary key,
     song_id text not null references public.songs(id) on delete cascade,
@@ -101,8 +102,18 @@ create table if not exists public.sunday_songs (
     added_at timestamptz not null default now()
 );
 
-create unique index if not exists ux_sunday_songs_song_id on public.sunday_songs(song_id);
-create index if not exists ix_sunday_songs_position on public.sunday_songs(position);
+alter table public.sunday_songs add column if not exists sunday_date date;
+
+-- Backfill pre-existing rows (from before multi-week support) onto whatever the nearest
+-- upcoming Sunday was at migration time, so the list already being built stays intact.
+update public.sunday_songs
+set sunday_date = current_date + ((7 - extract(dow from current_date)::int) % 7)
+where sunday_date is null;
+alter table public.sunday_songs alter column sunday_date set not null;
+
+drop index if exists ux_sunday_songs_song_id;
+create unique index if not exists ux_sunday_songs_song_date on public.sunday_songs(song_id, sunday_date);
+create index if not exists ix_sunday_songs_date_position on public.sunday_songs(sunday_date, position);
 
 -- Auto-creates a profiles row the moment a user first authenticates (via OAuth), since
 -- profiles.id is a strict FK that favorites/comments/recently_viewed all depend on, and

@@ -402,15 +402,28 @@ function nextSundayDate(from = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
-async function regenerateSundaySetFile(drive) {
+// A signed-in user can add to the nearest upcoming Sunday's list; only an admin can
+// target a specific date further out, and only within the next month.
+function isValidSundayWithinMonth(dateStr) {
+  if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.getUTCDay() !== 0) return false;
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const max = new Date(today);
+  max.setUTCDate(max.getUTCDate() + 31);
+  return d >= today && d <= max;
+}
+
+async function regenerateSundaySetFile(drive, dateStr) {
   const rows = await db`
     SELECT s.title, s.open_song_id, sg.name AS singer_name
     FROM sunday_songs ss
     JOIN songs s ON s.id = ss.song_id
     JOIN singers sg ON sg.id = s.singer_id
+    WHERE ss.sunday_date = ${dateStr}
     ORDER BY ss.position
   `;
-  const dateStr = nextSundayDate();
   const xml = buildSetXml(dateStr, rows.map(r => ({ openSongId: r.open_song_id, title: r.title, singerName: r.singer_name })));
   const folderId = process.env.GOOGLE_DRIVE_TODAY_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID;
   const fileName = `${dateStr}.txt`;
@@ -463,16 +476,17 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
     let sundayDate = null;
     let sundayError = null;
     try {
-      const alreadyOnSunday = await db`SELECT 1 FROM sunday_songs WHERE song_id = ${req.params.id}`;
+      const targetDate = nextSundayDate();
+      const alreadyOnSunday = await db`SELECT 1 FROM sunday_songs WHERE song_id = ${req.params.id} AND sunday_date = ${targetDate}`;
       const isSundayToday = new Date().getUTCDay() === 0;
       if (!alreadyOnSunday.length && !isSundayToday && !(await isAdminRequest(req))) {
         sundayError = 'The Sunday Songs list is locked until next Sunday - ask an admin to add this song.';
       } else {
         if (!alreadyOnSunday.length) {
-          const [{ max_pos }] = await db`SELECT COALESCE(MAX(position), 0) AS max_pos FROM sunday_songs`;
-          await db`INSERT INTO sunday_songs (song_id, position) VALUES (${req.params.id}, ${max_pos + 1})`;
+          const [{ max_pos }] = await db`SELECT COALESCE(MAX(position), 0) AS max_pos FROM sunday_songs WHERE sunday_date = ${targetDate}`;
+          await db`INSERT INTO sunday_songs (song_id, sunday_date, position) VALUES (${req.params.id}, ${targetDate}, ${max_pos + 1})`;
         }
-        sundayDate = await regenerateSundaySetFile(drive);
+        sundayDate = await regenerateSundaySetFile(drive, targetDate);
       }
     } catch (sundayErr) {
       console.error('Sunday set update failed:', sundayErr);
@@ -486,17 +500,42 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
   }
 });
 
+// Admin-only: add a song directly to a specific upcoming Sunday's list (up to a month
+// out), for planning ahead rather than only ever adding to the nearest Sunday.
+app.post('/api/sunday-songs', requireAdmin, async (req, res) => {
+  const { songId, date } = req.body || {};
+  if (!songId || !isValidSundayWithinMonth(date)) {
+    return res.status(400).json({ error: 'songId and a Sunday date within the next month are required' });
+  }
+  try {
+    const song = await db`SELECT 1 FROM songs WHERE id = ${songId}`;
+    if (!song.length) return res.status(404).json({ error: 'Song not found' });
+    const already = await db`SELECT 1 FROM sunday_songs WHERE song_id = ${songId} AND sunday_date = ${date}`;
+    if (!already.length) {
+      const [{ max_pos }] = await db`SELECT COALESCE(MAX(position), 0) AS max_pos FROM sunday_songs WHERE sunday_date = ${date}`;
+      await db`INSERT INTO sunday_songs (song_id, sunday_date, position) VALUES (${songId}, ${date}, ${max_pos + 1})`;
+    }
+    await regenerateSundaySetFile(getDriveClient(), date);
+    res.json({ ok: true, date });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/sunday-songs', async (req, res) => {
   try {
+    const date = isValidSundayWithinMonth(req.query.date) ? req.query.date : nextSundayDate();
     const rows = await db`
       SELECT ss.song_id, ss.position, s.title, s.open_song_id, sg.name AS singer_name
       FROM sunday_songs ss
       JOIN songs s ON s.id = ss.song_id
       JOIN singers sg ON sg.id = s.singer_id
+      WHERE ss.sunday_date = ${date}
       ORDER BY ss.position
     `;
     res.json({
-      date: nextSundayDate(),
+      date,
       songs: rows.map(r => ({ songId: r.song_id, position: r.position, title: r.title, openSongId: r.open_song_id, singer: r.singer_name })),
     });
   } catch (err) {
@@ -507,19 +546,20 @@ app.get('/api/sunday-songs', async (req, res) => {
 
 app.put('/api/sunday-songs/order', requireAdmin, async (req, res) => {
   const songIds = Array.isArray(req.body?.songIds) ? req.body.songIds : [];
+  const date = isValidSundayWithinMonth(req.body?.date) ? req.body.date : nextSundayDate();
   if (!songIds.length) return res.status(400).json({ error: 'songIds is required' });
   try {
-    const current = await db`SELECT song_id FROM sunday_songs`;
+    const current = await db`SELECT song_id FROM sunday_songs WHERE sunday_date = ${date}`;
     const currentIds = new Set(current.map(r => r.song_id));
     if (songIds.length !== currentIds.size || !songIds.every(id => currentIds.has(id))) {
       return res.status(400).json({ error: 'songIds must match the current Sunday set exactly' });
     }
     await db.begin(async tx => {
       for (let i = 0; i < songIds.length; i++) {
-        await tx`UPDATE sunday_songs SET position = ${i + 1} WHERE song_id = ${songIds[i]}`;
+        await tx`UPDATE sunday_songs SET position = ${i + 1} WHERE song_id = ${songIds[i]} AND sunday_date = ${date}`;
       }
     });
-    await regenerateSundaySetFile(getDriveClient());
+    await regenerateSundaySetFile(getDriveClient(), date);
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
@@ -528,15 +568,16 @@ app.put('/api/sunday-songs/order', requireAdmin, async (req, res) => {
 });
 
 app.delete('/api/sunday-songs/:songId', requireAdmin, async (req, res) => {
+  const date = isValidSundayWithinMonth(req.query.date) ? req.query.date : nextSundayDate();
   try {
     await db.begin(async tx => {
-      await tx`DELETE FROM sunday_songs WHERE song_id = ${req.params.songId}`;
-      const remaining = await tx`SELECT song_id FROM sunday_songs ORDER BY position`;
+      await tx`DELETE FROM sunday_songs WHERE song_id = ${req.params.songId} AND sunday_date = ${date}`;
+      const remaining = await tx`SELECT song_id FROM sunday_songs WHERE sunday_date = ${date} ORDER BY position`;
       for (let i = 0; i < remaining.length; i++) {
-        await tx`UPDATE sunday_songs SET position = ${i + 1} WHERE song_id = ${remaining[i].song_id}`;
+        await tx`UPDATE sunday_songs SET position = ${i + 1} WHERE song_id = ${remaining[i].song_id} AND sunday_date = ${date}`;
       }
     });
-    await regenerateSundaySetFile(getDriveClient());
+    await regenerateSundaySetFile(getDriveClient(), date);
     res.json({ ok: true });
   } catch (err) {
     console.error(err);

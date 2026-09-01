@@ -108,15 +108,21 @@
     .comment-meta { display: flex; justify-content: space-between; font-size: 0.8rem; color: #718096; margin-bottom: 4px; }
     .comment-text { color: #1a202c; white-space: pre-line; line-height: 1.5; }
     .comment-hint { color: #a0aec0; font-size: 0.85rem; }
-    .sunday-song-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #edf2f7; }
-    .sunday-song-info { flex: 1; min-width: 0; cursor: pointer; }
+    .sunday-song-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #edf2f7; font-size: 0.88rem; }
+    .sunday-song-info { flex: 1; min-width: 0; cursor: pointer; display: flex; align-items: baseline; gap: 6px; overflow: hidden; }
     .sunday-song-title { font-weight: 600; color: #1a202c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .sunday-song-singer { font-size: 0.8rem; color: #718096; }
-    .sunday-song-actions { display: flex; gap: 4px; flex-shrink: 0; }
-    .sunday-song-actions button { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.9rem; }
+    .sunday-song-singer { font-size: 0.78rem; color: #718096; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sunday-song-actions { display: flex; gap: 3px; flex-shrink: 0; }
+    .sunday-song-actions button { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 0.8rem; line-height: 1.4; }
     .sunday-song-actions button:hover { background: #e2e8f0; }
     .sunday-song-actions button:disabled { opacity: 0.35; cursor: default; }
     .sunday-song-actions button.destructive { color: #c53030; }
+    #sundayDateSelect { margin-top: 8px; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e0; font-size: 0.9rem; }
+    .sunday-add-song { margin-top: 10px; }
+    .sunday-add-song input { width: 100%; box-sizing: border-box; padding: 7px 10px; border-radius: 6px; border: 1px solid #cbd5e0; font-size: 0.9rem; }
+    .sunday-add-results { margin-top: 4px; max-height: 220px; overflow-y: auto; }
+    .sunday-add-result { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px; cursor: pointer; border-radius: 4px; }
+    .sunday-add-result:hover { background: #edf2f7; }
     .welcome-hero { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 15px; display: block; }
     .singer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; margin-top: 10px; }
     .singer-avatar-card { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px; border-radius: 8px; cursor: pointer; text-align: center; }
@@ -593,10 +599,36 @@
       renderFlatSongList(document.getElementById('newSongsContainer'), newest, 'No new songs in the last ' + NEW_BADGE_DAYS + ' days.');
     }
 
+let sundaySelectedDate = null;
+
+// The Sundays an admin is allowed to plan ahead for - the nearest one, plus each
+// following Sunday up to a month out.
+function upcomingSundays() {
+    const dates = [];
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() + (d.getUTCDay() === 0 ? 0 : 7 - d.getUTCDay()));
+    // Capped at 4 so the furthest option (worst case: nearest Sunday is 6 days out,
+    // +3*7 more) never exceeds the server's 31-day window in isValidSundayWithinMonth.
+    for (let i = 0; i < 4; i++) {
+      dates.push(d.toISOString().slice(0, 10));
+      d.setUTCDate(d.getUTCDate() + 7);
+    }
+    return dates;
+  }
+
     async function showSundaySongsView() {
       closeAccountMenu();
+      sundaySelectedDate = upcomingSundays()[0];
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = '<h2>🗓️ Sunday Songs</h2><p class="comment-hint" id="sundaySongsDate">Loading…</p><div id="sundaySongsContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
+      const dateOptions = upcomingSundays().map(d => `<option value="${d}">${formatSundayDate(d)}</option>`).join('');
+      middleFrame.innerHTML = `<h2>🗓️ Sunday Songs</h2>
+        <select id="sundayDateSelect" onchange="sundaySelectedDate = this.value; loadSundaySongsList();">${dateOptions}</select>
+        ${isAdmin ? `<div class="sunday-add-song">
+          <input type="text" id="sundayAddSearch" placeholder="Search a song to add…" oninput="renderSundayAddResults(this.value)">
+          <div id="sundayAddResults" class="sunday-add-results"></div>
+        </div>` : ''}
+        <div id="sundaySongsContainer" style="margin-top:10px;"><p class="comment-hint">Loading…</p></div>`;
       await loadSundaySongsList();
     }
 
@@ -606,14 +638,45 @@
       return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
     }
 
+    function renderSundayAddResults(query) {
+      const resultsEl = document.getElementById('sundayAddResults');
+      if (!resultsEl) return;
+      const q = query.trim().toLowerCase();
+      if (!q) { resultsEl.innerHTML = ''; return; }
+      const matches = [...songIndex.values()]
+        .filter(({ song, singerName }) => song.title.toLowerCase().includes(q) || singerName.toLowerCase().includes(q))
+        .slice(0, 8);
+      resultsEl.innerHTML = matches.map(({ song, singerName }) => `
+        <div class="sunday-add-result" onclick='addSongToSunday(${JSON.stringify(song.id)})'>
+          <span class="sunday-song-title">${escapeHtml(song.title)}</span>
+          <span class="sunday-song-singer">${escapeHtml(singerName)}</span>
+        </div>
+      `).join('') || '<p class="comment-hint">No matches.</p>';
+    }
+
+    async function addSongToSunday(songId) {
+      try {
+        const res = await fetch('/api/sunday-songs', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ songId, date: sundaySelectedDate }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not add song.');
+        document.getElementById('sundayAddSearch').value = '';
+        document.getElementById('sundayAddResults').innerHTML = '';
+        await loadSundaySongsList();
+      } catch (err) {
+        alert('Could not add song: ' + err.message);
+      }
+    }
+
     async function loadSundaySongsList() {
       if (!document.getElementById('sundaySongsContainer')) return; // user navigated away meanwhile
       try {
-        const res = await fetch('/api/sunday-songs');
+        const res = await fetch(`/api/sunday-songs?date=${encodeURIComponent(sundaySelectedDate)}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to load Sunday songs.');
-        const dateEl = document.getElementById('sundaySongsDate');
-        if (dateEl) dateEl.textContent = formatSundayDate(data.date);
+        sundaySelectedDate = data.date;
         const container = document.getElementById('sundaySongsContainer');
         if (container) renderSundaySongsList(container, data.songs);
       } catch (err) {
@@ -623,12 +686,12 @@
     }
 
     function renderSundaySongsList(container, items) {
-      if (!items.length) { container.innerHTML = '<p class="comment-hint">No songs added for Sunday yet. Use the Drive-export button on a song to add it.</p>'; return; }
+      if (!items.length) { container.innerHTML = '<p class="comment-hint">No songs added for this Sunday yet.</p>'; return; }
       container.innerHTML = items.map((item, index) => `
         <div class="sunday-song-row">
           <div class="sunday-song-info" onclick='jumpToSongById(${JSON.stringify(item.songId)})'>
-            <div class="sunday-song-title">${formatOpenSongId(item.openSongId)} ${escapeHtml(item.title)}</div>
-            <div class="sunday-song-singer">${escapeHtml(item.singer)}</div>
+            <span class="sunday-song-title">${formatOpenSongId(item.openSongId)} ${escapeHtml(item.title)}</span>
+            <span class="sunday-song-singer">${escapeHtml(item.singer)}</span>
           </div>
           ${isAdmin ? `<div class="sunday-song-actions">
             <button title="Move up" ${index === 0 ? 'disabled' : ''} onclick='moveSundaySong(${index}, -1)'>⬆️</button>
@@ -659,7 +722,7 @@
       try {
         const res = await fetch('/api/sunday-songs/order', {
           method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ songIds })
+          body: JSON.stringify({ songIds, date: sundaySelectedDate })
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Could not reorder.');
@@ -670,8 +733,9 @@
     }
 
     async function removeSundaySong(songId) {
+      if (!confirm('Remove this song from the Sunday Songs list?')) return;
       try {
-        const res = await fetch(`/api/sunday-songs/${encodeURIComponent(songId)}`, { method: 'DELETE', headers: authHeaders() });
+        const res = await fetch(`/api/sunday-songs/${encodeURIComponent(songId)}?date=${encodeURIComponent(sundaySelectedDate)}`, { method: 'DELETE', headers: authHeaders() });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Could not remove.');
         await loadSundaySongsList();
