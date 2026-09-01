@@ -457,16 +457,16 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
 
     // Adding to the Sunday set is best-effort - a failure here (e.g. a transient Drive
     // error) must not make the browser think the song file itself failed to export.
-    // Once the target Sunday has arrived, only an admin can still add new songs to it -
-    // the set is considered final for everyone else at that point.
+    // Non-admins can add songs any day through the target Sunday itself; once that day
+    // has passed (Monday onward), the set is considered final until admin reopens it,
+    // so only an admin can still add to it.
     let sundayDate = null;
     let sundayError = null;
     try {
       const alreadyOnSunday = await db`SELECT 1 FROM sunday_songs WHERE song_id = ${req.params.id}`;
-      const targetDate = nextSundayDate();
-      const isSundayToday = new Date().toISOString().slice(0, 10) === targetDate;
-      if (!alreadyOnSunday.length && isSundayToday && !(await isAdminRequest(req))) {
-        sundayError = 'The Sunday Songs list is locked for today - ask an admin to add this song.';
+      const isSundayToday = new Date().getUTCDay() === 0;
+      if (!alreadyOnSunday.length && !isSundayToday && !(await isAdminRequest(req))) {
+        sundayError = 'The Sunday Songs list is locked until next Sunday - ask an admin to add this song.';
       } else {
         if (!alreadyOnSunday.length) {
           const [{ max_pos }] = await db`SELECT COALESCE(MAX(position), 0) AS max_pos FROM sunday_songs`;
