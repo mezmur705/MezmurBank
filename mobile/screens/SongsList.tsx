@@ -10,7 +10,7 @@ import type { SongWithSinger } from '../types/models';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SongsList'>;
 
-const NEW_BADGE_DAYS = 5;
+const NEW_BADGE_DAYS = 30;
 function isNewSong(song: SongWithSinger): boolean {
   const ageMs = Date.now() - new Date(song.created_at).getTime();
   return ageMs < NEW_BADGE_DAYS * 24 * 60 * 60 * 1000;

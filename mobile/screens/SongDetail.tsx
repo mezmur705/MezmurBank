@@ -23,7 +23,7 @@ import type { Comment } from '../types/models';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SongDetail'>;
 
-const NEW_BADGE_DAYS = 5;
+const NEW_BADGE_DAYS = 30;
 
 const REACTIONS: { key: 'like_count' | 'love_count' | 'haha_count' | 'wow_count' | 'sad_count' | 'angry_count'; emoji: string; label: string }[] = [
   { key: 'like_count', emoji: '👍', label: 'Like' },

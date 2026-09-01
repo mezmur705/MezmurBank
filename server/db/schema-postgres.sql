@@ -41,7 +41,7 @@ alter table public.songs alter column open_song_id set default nextval('public.o
 alter table public.songs add column if not exists source_name text;
 alter table public.songs add column if not exists source_url text;
 
--- Backs the "New" badge (shown in both apps for 5 days after a song is added). Backfill
+-- Backs the "New" badge (shown in both apps for 30 days after a song is added). Backfill
 -- existing rows to a date well outside that window so they don't all appear "new" the
 -- moment this column is introduced; only rows inserted after this point default to now().
 alter table public.songs add column if not exists created_at timestamptz;

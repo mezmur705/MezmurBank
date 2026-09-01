@@ -285,7 +285,7 @@
       return language === 'Amharic' ? '' : `<span class="lang-badge">${language}</span>`;
     }
 
-    const NEW_BADGE_DAYS = 5;
+    const NEW_BADGE_DAYS = 30;
     function isNewSong(song) {
       if (!song.createdAt) return false;
       const ageMs = Date.now() - new Date(song.createdAt).getTime();
