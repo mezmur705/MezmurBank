@@ -338,17 +338,25 @@ app.post('/api/mezmurs/:id/comments', async (req, res) => {
   }
 });
 
+// "Exported Files" in the account menu is meant to show the Sunday set files
+// (named YYYY-MM-DD.txt by regenerateSundaySetFile) - not the per-singer folders
+// that per-song Drive exports create in GOOGLE_DRIVE_FOLDER_ID, and not whatever
+// unrelated legacy content also happens to sit in the same folder.
+const SUNDAY_FILE_NAME_RE = /^\d{4}-\d{2}-\d{2}\.txt$/;
+
 app.get('/api/drive-exports', async (req, res) => {
   try {
     const drive = getDriveClient();
+    const folderId = process.env.GOOGLE_DRIVE_TODAY_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID;
     const result = await drive.files.list({
-      q: `'${process.env.GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false`,
+      q: `'${folderId}' in parents and trashed = false`,
       orderBy: 'createdTime desc',
       fields: 'files(id, name, webViewLink, createdTime)',
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
     });
-    res.json(result.data.files ?? []);
+    const files = (result.data.files ?? []).filter(f => SUNDAY_FILE_NAME_RE.test(f.name));
+    res.json(files);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
