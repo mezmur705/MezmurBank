@@ -48,7 +48,6 @@
     .frame { overflow-y: auto; padding: 15px; background: white; border-right: 1px solid #e2e8f0; }
     .left-frame { width: 25%; min-width: 220px; background-color: #f8fafc; }
     .left-frame h3 { font-size: 1rem; color: #4a5568; margin-bottom: 10px; display: flex; justify-content: space-between; }
-    .btn-collapse { background: none; border: none; color: #3182ce; cursor: pointer; font-size: 0.8rem; }
     /* Tree structure — shared look for the left singer nav and the middle results list. */
     .tree-root { list-style: none; }
     .tree-node { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
@@ -222,7 +221,7 @@
 
   <div class="app-container">
     <div class="frame left-frame" id="leftFrame">
-      <h3>Singers <button class="btn-collapse" onclick="collapseAll()">Collapse All</button></h3>
+      <h3>Singers</h3>
       <div id="singerNav"></div>
     </div>
     <div class="frame middle-frame" id="middleFrame"></div>
@@ -997,10 +996,6 @@ function upcomingSundays() {
         displaySingerSongs(nodeElement.dataset.singer);
       }
       nodeElement.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    }
-    function collapseAll() {
-      document.querySelectorAll('#singerNav .tree-children').forEach(item => item.classList.remove('open'));
-      document.querySelectorAll('#singerNav .tree-node').forEach(item => item.classList.remove('open'));
     }
     // Renders one or more singer groups as a two-level tree (singer -> songs) into `container`.
     function renderSongTree(container, groups, query) {
