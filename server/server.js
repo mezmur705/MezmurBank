@@ -24,11 +24,15 @@ function detectLanguage(title, lyrics) {
 }
 
 // First few non-blank, non-section-tag lines of a lyric sheet - used as YouTube search text.
+// Parenthetical repeat/ad-lib markers (e.g. "(2x)", "(እህህ)") are stripped and the line count
+// kept short - a long, noisy query matches nothing on YouTube even when the video exists.
 function firstLyricLines(lyrics, count) {
   return (lyrics || '')
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(line => line && !/^\[[^\]]*\]$/.test(line))
+    .map(line => line.replace(/\([^)]*\)/g, '').trim())
+    .filter(Boolean)
     .slice(0, count)
     .join(' ');
 }
@@ -618,7 +622,7 @@ app.get('/api/mezmurs/:id/youtube', async (req, res) => {
       return res.json({ videoId: null, configured: false, confirmed: false });
     }
 
-    const query = `${song.singer} ${firstLyricLines(song.lyrics, 7)}`;
+    const query = `${song.singer} ${firstLyricLines(song.lyrics, 3)}`;
     const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(query)}&key=${process.env.YOUTUBE_API_KEY}`;
     const ytRes = await fetch(apiUrl);
     const ytData = await ytRes.json();
