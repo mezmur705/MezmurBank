@@ -97,6 +97,25 @@ export interface DriveExport {
   createdTime: string;
 }
 
+export interface SundaySong {
+  songId: string;
+  position: number;
+  title: string;
+  openSongId: number | null;
+  singer: string;
+}
+
+// Read-only: mobile always shows the nearest upcoming Sunday's list. Planning further
+// ahead is an admin-only capability on the web app for now.
+export async function getSundaySongs(): Promise<{ date: string; songs: SundaySong[] }> {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
+  const response = await fetch(`${apiUrl}/api/sunday-songs`);
+  const body = await response.json();
+  if (!response.ok) throw new Error(body?.error ?? 'Failed to load Sunday songs.');
+  return body;
+}
+
 export async function getDriveExports(): Promise<DriveExport[]> {
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');

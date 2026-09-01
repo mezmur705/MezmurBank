@@ -28,6 +28,11 @@ export default function HeaderMenu() {
     navigation.navigate('DriveExports');
   };
 
+  const goToSundaySongs = () => {
+    setOpen(false);
+    navigation.navigate('SundaySongs');
+  };
+
   return (
     <>
       <TouchableOpacity onPress={() => setOpen(true)} accessibilityLabel="Menu" style={styles.trigger}>
@@ -39,6 +44,7 @@ export default function HeaderMenu() {
             <MenuItem icon="favorite-border" label="Favorites" onPress={() => goToAccountScreen('Favorites')} />
             <MenuItem icon="history" label="Recently Viewed" onPress={() => goToAccountScreen('RecentlyViewed')} />
             <MenuItem icon="folder-shared" label="Exported Files" onPress={goToDriveExports} />
+            <MenuItem icon="event" label="Sunday Songs" onPress={goToSundaySongs} />
             <View style={styles.divider} />
             {user ? (
               <MenuItem

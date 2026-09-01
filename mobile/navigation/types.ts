@@ -5,4 +5,5 @@ export type RootStackParamList = {
   RecentlyViewed: undefined;
   Favorites: undefined;
   DriveExports: undefined;
+  SundaySongs: undefined;
 };
