@@ -596,18 +596,26 @@
     async function showSundaySongsView() {
       closeAccountMenu();
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = '<h2>🗓️ Sunday Songs</h2><div id="sundaySongsContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
+      middleFrame.innerHTML = '<h2>🗓️ Sunday Songs</h2><p class="comment-hint" id="sundaySongsDate">Loading…</p><div id="sundaySongsContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
       await loadSundaySongsList();
+    }
+
+    function formatSundayDate(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(`${dateStr}T00:00:00Z`);
+      return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
     }
 
     async function loadSundaySongsList() {
       if (!document.getElementById('sundaySongsContainer')) return; // user navigated away meanwhile
       try {
         const res = await fetch('/api/sunday-songs');
-        const items = await res.json();
-        if (!res.ok) throw new Error(items.error || 'Failed to load Sunday songs.');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load Sunday songs.');
+        const dateEl = document.getElementById('sundaySongsDate');
+        if (dateEl) dateEl.textContent = formatSundayDate(data.date);
         const container = document.getElementById('sundaySongsContainer');
-        if (container) renderSundaySongsList(container, items);
+        if (container) renderSundaySongsList(container, data.songs);
       } catch (err) {
         const container = document.getElementById('sundaySongsContainer');
         if (container) container.innerHTML = `<p class="comment-hint">Could not load Sunday songs: ${escapeHtml(err.message)}</p>`;

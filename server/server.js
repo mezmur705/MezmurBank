@@ -487,7 +487,10 @@ app.get('/api/sunday-songs', async (req, res) => {
       JOIN singers sg ON sg.id = s.singer_id
       ORDER BY ss.position
     `;
-    res.json(rows.map(r => ({ songId: r.song_id, position: r.position, title: r.title, openSongId: r.open_song_id, singer: r.singer_name })));
+    res.json({
+      date: nextSundayDate(),
+      songs: rows.map(r => ({ songId: r.song_id, position: r.position, title: r.title, openSongId: r.open_song_id, singer: r.singer_name })),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
