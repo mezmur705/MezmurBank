@@ -636,7 +636,7 @@ function upcomingSundays() {
       middleFrame.innerHTML = `<h2>🗓️ Sunday Songs</h2>
         <select id="sundayDateSelect" onchange="sundaySelectedDate = this.value; loadSundaySongsList();">${dateOptions}</select>
         ${isAdmin ? `<div class="sunday-add-song">
-          <input type="text" id="sundayAddSearch" placeholder="Search a song to add…" oninput="renderSundayAddResults(this.value)">
+          <input type="text" id="sundayAddSearch" placeholder="Search by title, singer, or OpenSongID…" oninput="renderSundayAddResults(this.value)">
           <div id="sundayAddResults" class="sunday-add-results"></div>
         </div>` : ''}
         <div id="sundaySongsContainer" style="margin-top:10px;"><p class="comment-hint">Loading…</p></div>`;
@@ -655,11 +655,13 @@ function upcomingSundays() {
       const q = query.trim().toLowerCase();
       if (!q) { resultsEl.innerHTML = ''; return; }
       const matches = [...songIndex.values()]
-        .filter(({ song, singerName }) => song.title.toLowerCase().includes(q) || singerName.toLowerCase().includes(q))
+        .filter(({ song, singerName }) => song.title.toLowerCase().includes(q)
+          || singerName.toLowerCase().includes(q)
+          || (song.openSongId != null && String(song.openSongId).includes(q)))
         .slice(0, 8);
       resultsEl.innerHTML = matches.map(({ song, singerName }) => `
         <div class="sunday-add-result" onclick='addSongToSunday(${JSON.stringify(song.id)})'>
-          <span class="sunday-song-title">${escapeHtml(song.title)}</span>
+          <span class="sunday-song-title">${formatOpenSongId(song.openSongId)} - ${escapeHtml(song.title)}</span>
           <span class="sunday-song-singer">${escapeHtml(singerName)}</span>
         </div>
       `).join('') || '<p class="comment-hint">No matches.</p>';
