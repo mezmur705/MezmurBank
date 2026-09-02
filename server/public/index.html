@@ -628,19 +628,32 @@ function upcomingSundays() {
     return dates;
   }
 
-    async function showSundaySongsView() {
+    // date: optional YYYY-MM-DD to open directly to (used by shared links) - falls back to
+    // the nearest upcoming Sunday. If it's outside the normal 4-week planning window (e.g. a
+    // past Sunday shared for reference), it's added to the dropdown so it can stay selected.
+    async function showSundaySongsView(date) {
       closeAccountMenu();
-      sundaySelectedDate = upcomingSundays()[0];
+      sundaySelectedDate = date || upcomingSundays()[0];
       const middleFrame = document.getElementById('middleFrame');
-      const dateOptions = upcomingSundays().map(d => `<option value="${d}">${formatSundayDate(d)}</option>`).join('');
-      middleFrame.innerHTML = `<h2>🗓️ Sunday Songs</h2>
+      const dates = upcomingSundays();
+      if (!dates.includes(sundaySelectedDate)) dates.unshift(sundaySelectedDate);
+      const dateOptions = dates.map(d => `<option value="${d}" ${d === sundaySelectedDate ? 'selected' : ''}>${formatSundayDate(d)}</option>`).join('');
+      middleFrame.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h2 style="margin:0;">🗓️ Sunday Songs</h2>
+          <button class="copy-btn" id="shareSundayBtn" title="Copy a shareable link to this Sunday's songs">🔗 Share</button>
+        </div>
         <select id="sundayDateSelect" onchange="sundaySelectedDate = this.value; loadSundaySongsList();">${dateOptions}</select>
         ${isAdmin ? `<div class="sunday-add-song">
           <input type="text" id="sundayAddSearch" placeholder="Search by title, singer, or OpenSongID…" oninput="renderSundayAddResults(this.value)">
           <div id="sundayAddResults" class="sunday-add-results"></div>
         </div>` : ''}
         <div id="sundaySongsContainer" style="margin-top:10px;"><p class="comment-hint">Loading…</p></div>`;
+      document.getElementById('shareSundayBtn').onclick = event => copyToClipboard(sundayShareLink(), event.currentTarget);
       await loadSundaySongsList();
+    }
+
+    function sundayShareLink() {
+      return `${location.origin}${location.pathname}?sunday=${encodeURIComponent(sundaySelectedDate)}`;
     }
 
     function formatSundayDate(dateStr) {
@@ -1408,6 +1421,10 @@ function upcomingSundays() {
       document.getElementById('searchAll').focus();
       await refreshAdminStatus();
       await loadMezmursFromDb();
+      const sundayParam = new URLSearchParams(location.search).get('sunday');
+      if (sundayParam && /^\d{4}-\d{2}-\d{2}$/.test(sundayParam)) {
+        showSundaySongsView(sundayParam);
+      }
       voiceContinuous = true;
       startListening();
     }
