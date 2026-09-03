@@ -15,5 +15,8 @@
     "jsonwebtoken": "^9.0.2",
     "postgres": "^3.4.9",
     "pptxgenjs": "^4.0.1"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
   }
 }
