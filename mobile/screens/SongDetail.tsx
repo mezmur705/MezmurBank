@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, StyleSheet, useWindowDimensions, Share, TouchableOpacity, TextInput, Alert, Linking } from 'react-native';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as Sharing from 'expo-sharing';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { useLibrary } from '../context/LibraryContext';
@@ -16,7 +15,6 @@ import {
   recordRecentlyViewed,
   exportToDrive,
 } from '../lib/api';
-import { generateLyricsPptx } from '../lib/pptx';
 import HighlightText from '../components/HighlightText';
 import { colors } from '../theme';
 import type { Comment } from '../types/models';
@@ -45,7 +43,6 @@ export default function SongDetail({ route }: Props) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [commentsError, setCommentsError] = useState<string | null>(null);
-  const [generatingSlides, setGeneratingSlides] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -183,26 +180,6 @@ export default function SongDetail({ route }: Props) {
     Share.share({ message, title: song.title });
   };
 
-  const handleSharePptx = async () => {
-    setGeneratingSlides(true);
-    try {
-      const uri = await generateLyricsPptx(song);
-      const available = await Sharing.isAvailableAsync();
-      if (!available) {
-        Alert.alert('Sharing not available', 'Sharing files is not supported on this device.');
-        return;
-      }
-      await Sharing.shareAsync(uri, {
-        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        dialogTitle: song.title,
-      });
-    } catch (err) {
-      Alert.alert('Could not create PowerPoint', err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setGeneratingSlides(false);
-    }
-  };
-
   const isNew = Date.now() - new Date(song.created_at).getTime() < NEW_BADGE_DAYS * 24 * 60 * 60 * 1000;
 
   return (
@@ -258,18 +235,6 @@ export default function SongDetail({ route }: Props) {
             <ActivityIndicator size="small" color={colors.textPrimary} />
           ) : (
             <MaterialIcons name="cloud-upload" size={20} color={colors.textPrimary} />
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleSharePptx}
-          style={styles.shareButton}
-          accessibilityLabel="Share as PowerPoint"
-          disabled={generatingSlides}
-        >
-          {generatingSlides ? (
-            <ActivityIndicator size="small" color={colors.textPrimary} />
-          ) : (
-            <MaterialIcons name="slideshow" size={20} color={colors.textPrimary} />
           )}
         </TouchableOpacity>
         <TouchableOpacity onPress={handleShare} style={styles.shareButton} accessibilityLabel="Share song">
