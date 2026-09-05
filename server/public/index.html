@@ -958,7 +958,11 @@ function upcomingSundays() {
         const singersMap = new Map();
         rows.forEach(row => {
           if (!singersMap.has(row.singer)) singersMap.set(row.singer, { id: row.singerId, amharic: row.singerAmharic, songs: [] });
-          singersMap.get(row.singer).songs.push({ id: row.id, openSongId: row.openSongId, singerId: row.singerId, title: row.title, lyrics: row.lyrics, language: row.language, openSongFormat: row.openSongFormat, youtubeVideoId: row.youtubeVideoId, mediaUrl: row.mediaUrl, sourceName: row.sourceName, sourceUrl: row.sourceUrl, createdAt: row.createdAt });
+          // A singer with no songs yet (e.g. just created) comes back as one row with every
+          // song field null - nothing to push as a song in that case.
+          if (row.id != null) {
+            singersMap.get(row.singer).songs.push({ id: row.id, openSongId: row.openSongId, singerId: row.singerId, title: row.title, lyrics: row.lyrics, language: row.language, openSongFormat: row.openSongFormat, youtubeVideoId: row.youtubeVideoId, mediaUrl: row.mediaUrl, sourceName: row.sourceName, sourceUrl: row.sourceUrl, createdAt: row.createdAt });
+          }
         });
         mezmurData.length = 0;
         singersMap.forEach((entry, singer) => {
