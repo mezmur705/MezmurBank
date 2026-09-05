@@ -656,6 +656,10 @@ function upcomingSundays() {
       return `${location.origin}${location.pathname}?sunday=${encodeURIComponent(sundaySelectedDate)}`;
     }
 
+    function songShareLink(song) {
+      return `${location.origin}${location.pathname}?song=${encodeURIComponent(song.id)}`;
+    }
+
     function formatSundayDate(dateStr) {
       if (!dateStr) return '';
       const d = new Date(`${dateStr}T00:00:00Z`);
@@ -1067,7 +1071,7 @@ function upcomingSundays() {
       const query = document.getElementById('searchAll').value;
       const singerEntry = mezmurData.find(item => item.singer === singerName);
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = `<div class="opensong-id-row"><div style="display:flex; gap:8px; align-items:center; margin-left:auto; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive and add to Sunday Songs">${DRIVE_ICON_SVG}</button><button class="opensong-corner-btn" id="openSongFormatBtn" title="Open in PowerPoint">${POWERPOINT_ICON_SVG}</button><button class="edit-btn-inline" id="editSongBtn" title="Edit">✏️</button><button class="delete-btn-inline" title="Delete" onclick="deleteMezmur('${song.id}')">🗑</button></div></div><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}">${highlightText(song.title, query)}${langBadge(song.language)}${newBadge(song)}</h2><h4 class="singer-line" style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4>${song.sourceUrl ? `<p class="comment-hint" style="margin-top:-10px;">Source: <a href="${escapeHtml(song.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(song.sourceName || 'External source')}</a> (CC BY-SA)</p>` : ''}</div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
+      middleFrame.innerHTML = `<div class="opensong-id-row"><div style="display:flex; gap:8px; align-items:center; margin-left:auto; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="copy-btn" id="shareSongBtn" title="Copy a shareable link to this song">🔗</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive and add to Sunday Songs">${DRIVE_ICON_SVG}</button><button class="opensong-corner-btn" id="openSongFormatBtn" title="Open in PowerPoint">${POWERPOINT_ICON_SVG}</button><button class="edit-btn-inline" id="editSongBtn" title="Edit">✏️</button><button class="delete-btn-inline" title="Delete" onclick="deleteMezmur('${song.id}')">🗑</button></div></div><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}">${highlightText(song.title, query)}${langBadge(song.language)}${newBadge(song)}</h2><h4 class="singer-line" style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4>${song.sourceUrl ? `<p class="comment-hint" style="margin-top:-10px;">Source: <a href="${escapeHtml(song.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(song.sourceName || 'External source')}</a> (CC BY-SA)</p>` : ''}</div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
         <div class="engagement-bar">
           <span class="view-count" id="viewCountLabel">👁 — views</span>
           <div class="reaction-row" id="reactionRow">
@@ -1092,6 +1096,7 @@ function upcomingSundays() {
       document.getElementById('editSongBtn').onclick = () => openEditSongModal(song, singerName);
       document.getElementById('copyLyricsBtn').onclick = event => copyToClipboard(song.lyrics, event.currentTarget);
       document.getElementById('favoriteBtn').onclick = event => toggleFavoriteUI(song.id, event.currentTarget);
+      document.getElementById('shareSongBtn').onclick = event => copyToClipboard(songShareLink(song), event.currentTarget);
       document.getElementById('exportDriveBtn').onclick = event => exportSongToDrive(song.id, event.currentTarget);
       refreshFavoriteButton(song.id);
       recordRecentlyViewed(song.id);
@@ -1432,8 +1437,12 @@ function upcomingSundays() {
       document.getElementById('searchAll').focus();
       await refreshAdminStatus();
       await loadMezmursFromDb();
-      const sundayParam = new URLSearchParams(location.search).get('sunday');
-      if (sundayParam && /^\d{4}-\d{2}-\d{2}$/.test(sundayParam)) {
+      const params = new URLSearchParams(location.search);
+      const songParam = params.get('song');
+      const sundayParam = params.get('sunday');
+      if (songParam && songIndex.has(songParam)) {
+        jumpToSongById(songParam);
+      } else if (sundayParam && /^\d{4}-\d{2}-\d{2}$/.test(sundayParam)) {
         showSundaySongsView(sundayParam);
       }
       voiceContinuous = true;
