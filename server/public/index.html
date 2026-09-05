@@ -969,7 +969,14 @@ function upcomingSundays() {
           entry.songs.sort((a, b) => a.title.localeCompare(b.title));
           mezmurData.push({ singer, singerId: entry.id, singerAmharic: entry.amharic, songs: entry.songs });
         });
-        mezmurData.sort((a, b) => a.singer.localeCompare(b.singer));
+        // UnknownSinger is a catch-all bucket for songs whose real singer isn't identified
+        // yet - always sort it last, not alphabetically, so it's easy to spot at the bottom
+        // of the list when reassigning its songs to their correct singer.
+        mezmurData.sort((a, b) => {
+          if (a.singer === 'UnknownSinger') return 1;
+          if (b.singer === 'UnknownSinger') return -1;
+          return a.singer.localeCompare(b.singer);
+        });
         songIndex.clear();
         mezmurData.forEach(entry => entry.songs.forEach(song => songIndex.set(song.id, { song, singerName: entry.singer })));
         renderNavigation(mezmurData);
