@@ -128,6 +128,7 @@ app.post('/api/mezmurs', requireAdmin, async (req, res) => {
   const songs = Array.isArray(req.body?.songs) ? req.body.songs : [];
   if (!songs.length) return res.status(400).json({ error: 'No songs provided' });
   try {
+    const savedIds = [];
     await db.begin(async tx => {
       const singerIdCache = new Map();
       let nextOpenSongId = null;
@@ -164,9 +165,12 @@ app.post('/api/mezmurs', requireAdmin, async (req, res) => {
             singer_id = EXCLUDED.singer_id, title = EXCLUDED.title, lyrics = EXCLUDED.lyrics,
             language = EXCLUDED.language, open_song_id = EXCLUDED.open_song_id, open_song_format = EXCLUDED.open_song_format
         `;
+        savedIds.push(id);
       }
     });
     res.json({ ok: true, count: songs.length });
+    // Fired after responding - a slow/rate-limited Drive export must never delay saving.
+    exportSongsToDriveInBackground(savedIds).catch(err => console.error('Background Drive export batch failed:', err));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -246,6 +250,8 @@ app.put('/api/mezmurs/:id', requireAdmin, async (req, res) => {
       WHERE id = ${req.params.id}
     `;
     res.json({ ok: true });
+    // Fired after responding - a slow/rate-limited Drive export must never delay saving.
+    exportSongsToDriveInBackground([req.params.id]).catch(err => console.error('Background Drive export failed:', err));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -407,6 +413,56 @@ async function findDriveFile(drive, name, parentId) {
   return list.data.files && list.data.files[0] ? list.data.files[0].id : null;
 }
 
+// Exports a single song's OpenSong file to <GOOGLE_DRIVE_FOLDER_ID>/<Singer>/<OpenSongID>_<Title>.txt,
+// replacing any existing file for that song. Shared by the manual "export to Drive" button and the
+// automatic export triggered whenever a song is added or edited.
+async function exportSongFileToDrive(drive, songId) {
+  const rows = await db`
+    SELECT s.title, s.open_song_id, s.open_song_format, sg.name AS singer_name
+    FROM songs s
+    JOIN singers sg ON s.singer_id = sg.id
+    WHERE s.id = ${songId}
+  `;
+  if (!rows.length) return null;
+  const { title, open_song_id, open_song_format, singer_name } = rows[0];
+  const xml = buildOpenSongXml({ title, singerName: singer_name, openSongId: open_song_id, lyricsBody: open_song_format });
+  const fileName = `${open_song_id}_${title}.txt`;
+
+  const folderId = await findOrCreateDriveFolder(drive, singer_name, process.env.GOOGLE_DRIVE_FOLDER_ID);
+  const existingFileId = await findDriveFile(drive, fileName, folderId);
+  if (existingFileId) {
+    await drive.files.delete({ fileId: existingFileId, supportsAllDrives: true });
+  }
+  const file = await drive.files.create({
+    requestBody: { name: fileName, parents: [folderId] },
+    media: { mimeType: 'text/plain', body: xml },
+    supportsAllDrives: true,
+    fields: 'id, webViewLink',
+  });
+  return { fileId: file.data.id, webViewLink: file.data.webViewLink, updated: !!existingFileId };
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Fire-and-forget: exports each song's file one at a time (small delay between calls, same
+// as export-all-to-drive.js) so saving many songs at once - e.g. the admin folder upload -
+// doesn't fire an unbounded burst of Drive API calls or make the save request wait on Drive.
+// Errors are logged, never thrown - a Drive hiccup must never be mistaken for a save failure.
+async function exportSongsToDriveInBackground(songIds) {
+  if (!process.env.GOOGLE_DRIVE_FOLDER_ID) return;
+  const drive = getDriveClient();
+  for (const songId of songIds) {
+    try {
+      await exportSongFileToDrive(drive, songId);
+    } catch (err) {
+      console.error(`Background Drive export failed for song "${songId}":`, err.message);
+    }
+    await sleep(150);
+  }
+}
+
 // The upcoming Sunday's set file is named by that Sunday's date - if today is
 // already Sunday, that counts as the "next possible Sunday" rather than rolling
 // over to the following week.
@@ -458,30 +514,10 @@ async function regenerateSundaySetFile(drive, dateStr) {
 
 app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) => {
   try {
-    const rows = await db`
-      SELECT s.title, s.open_song_id, s.open_song_format, sg.name AS singer_name
-      FROM songs s
-      JOIN singers sg ON s.singer_id = sg.id
-      WHERE s.id = ${req.params.id}
-    `;
-    if (!rows.length) return res.status(404).json({ error: 'Song not found' });
-    const { title, open_song_id, open_song_format, singer_name } = rows[0];
-    const xml = buildOpenSongXml({ title, singerName: singer_name, openSongId: open_song_id, lyricsBody: open_song_format });
-    const fileName = `${open_song_id}_${title}.txt`;
-
     const drive = getDriveClient();
-    const folderId = await findOrCreateDriveFolder(drive, singer_name, process.env.GOOGLE_DRIVE_FOLDER_ID);
-    const existingFileId = await findDriveFile(drive, fileName, folderId);
-
-    if (existingFileId) {
-      await drive.files.delete({ fileId: existingFileId, supportsAllDrives: true });
-    }
-    const file = await drive.files.create({
-      requestBody: { name: fileName, parents: [folderId] },
-      media: { mimeType: 'text/plain', body: xml },
-      supportsAllDrives: true,
-      fields: 'id, webViewLink',
-    });
+    const exported = await exportSongFileToDrive(drive, req.params.id);
+    if (!exported) return res.status(404).json({ error: 'Song not found' });
+    const { fileId, webViewLink, updated } = exported;
 
     // Adding to the Sunday set is best-effort - a failure here (e.g. a transient Drive
     // error) must not make the browser think the song file itself failed to export.
@@ -508,7 +544,7 @@ app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) 
       sundayError = sundayErr.message;
     }
 
-    res.json({ ok: true, fileId: file.data.id, webViewLink: file.data.webViewLink, updated: !!existingFileId, sundayDate, sundayError });
+    res.json({ ok: true, fileId, webViewLink, updated, sundayDate, sundayError });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
