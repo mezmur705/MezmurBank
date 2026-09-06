@@ -680,10 +680,18 @@ app.get('/api/mezmurs/:id/youtube', async (req, res) => {
   }
 });
 
-// Admin review step: promotes the cached auto-search suggestion into youtube_video_id, the
-// field everyone else sees. Nothing is shown to regular users until an admin does this.
+// Admin review step: saves a YouTube video as the song's confirmed link, the field everyone
+// else sees. With a videoId in the body (admin picked one from the candidates list), that one
+// is saved directly; otherwise falls back to promoting the cached auto-search suggestion.
+// Nothing is shown to regular users until an admin does this.
 app.post('/api/mezmurs/:id/youtube/confirm', requireAdmin, async (req, res) => {
   try {
+    const manualVideoId = extractYoutubeId(req.body?.videoId);
+    if (manualVideoId) {
+      await db`UPDATE songs SET youtube_video_id = ${manualVideoId}, youtube_suggested_id = ${manualVideoId} WHERE id = ${req.params.id}`;
+      return res.json({ videoId: manualVideoId, confirmed: true });
+    }
+
     const found = await db`SELECT youtube_suggested_id FROM songs WHERE id = ${req.params.id}`;
     if (!found.length) return res.status(404).json({ error: 'Song not found' });
     const suggested = found[0].youtube_suggested_id;
@@ -691,6 +699,43 @@ app.post('/api/mezmurs/:id/youtube/confirm', requireAdmin, async (req, res) => {
 
     await db`UPDATE songs SET youtube_video_id = ${suggested} WHERE id = ${req.params.id}`;
     res.json({ videoId: suggested || null, confirmed: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin-only: several YouTube search results to pick from, instead of trusting the single
+// auto-search guess. Read-only - doesn't touch youtube_suggested_id or youtube_video_id.
+app.get('/api/mezmurs/:id/youtube/candidates', requireAdmin, async (req, res) => {
+  try {
+    const found = await db`
+      SELECT s.lyrics, sg.name AS singer
+      FROM songs s
+      JOIN singers sg ON s.singer_id = sg.id
+      WHERE s.id = ${req.params.id}
+    `;
+    if (!found.length) return res.status(404).json({ error: 'Song not found' });
+    if (!process.env.YOUTUBE_API_KEY) return res.json({ candidates: [] });
+
+    const song = found[0];
+    const query = `${song.singer} ${firstLyricLines(song.lyrics, 3)}`;
+    const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=6&q=${encodeURIComponent(query)}&key=${process.env.YOUTUBE_API_KEY}`;
+    const ytRes = await fetch(apiUrl);
+    const ytData = await ytRes.json();
+    if (!ytRes.ok) {
+      console.error('YouTube API error:', ytData.error?.message || ytRes.status);
+      return res.status(502).json({ error: ytData.error?.message || 'YouTube search failed' });
+    }
+    const candidates = (ytData.items || [])
+      .filter(item => item.id?.videoId)
+      .map(item => ({
+        videoId: item.id.videoId,
+        title: item.snippet.title,
+        channelTitle: item.snippet.channelTitle,
+        thumbnail: item.snippet.thumbnails?.default?.url || null,
+      }));
+    res.json({ candidates });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

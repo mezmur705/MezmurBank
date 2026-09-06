@@ -133,6 +133,12 @@
     .singer-avatar-card span { font-size: 0.75rem; color: #2d3748; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
     .right-frame { width: 30%; border-right: none; background: #fafafa; }
     .youtube-container { width: 100%; height: 250px; background: #000; border-radius: 6px; overflow: hidden; margin-top: 10px; }
+    .youtube-candidate { display: flex; gap: 8px; align-items: center; padding: 6px; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 6px; cursor: pointer; background: white; }
+    .youtube-candidate:hover { background: #ebf8ff; border-color: #90cdf4; }
+    .youtube-candidate img { width: 64px; height: 48px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+    .youtube-candidate-info { min-width: 0; }
+    .youtube-candidate-title { font-size: 0.82rem; font-weight: 600; color: #1a202c; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .youtube-candidate-channel { font-size: 0.75rem; color: #718096; margin-top: 2px; }
     iframe { width: 100%; height: 100%; border: none; }
     .opensong-panel { margin-top: 15px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; max-height: 400px; overflow-y: auto; }
     .opensong-panel h4 { margin: 0 0 8px 0; color: #2b6cb0; }
@@ -1157,15 +1163,25 @@ function upcomingSundays() {
         if (data.videoId) {
           container.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.videoId}" allowfullscreen></iframe>`;
           if (data.confirmed) {
-            confirmRow.innerHTML = `<div style="color:#276749; font-size:0.85rem; font-weight:600;">✅ Confirmed</div>`;
+            confirmRow.innerHTML = isAdmin
+              ? `<div style="color:#276749; font-size:0.85rem; font-weight:600; margin-bottom:6px;">✅ Confirmed</div><button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Wrong video? Choose from list</button>`
+              : `<div style="color:#276749; font-size:0.85rem; font-weight:600;">✅ Confirmed</div>`;
+            if (isAdmin) document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
           } else {
             const notice = `<div style="color:#975a16; font-size:0.8rem; margin-bottom:6px;">⏳ Not yet confirmed - auto-found match, please review</div>`;
             confirmRow.innerHTML = isAdmin
-              ? `${notice}<button class="keyboard-btn" id="confirmYoutubeBtn" style="width:100%; justify-content:center;">✅ Confirm this is the right video</button>`
+              ? `${notice}<button class="keyboard-btn" id="confirmYoutubeBtn" style="width:100%; justify-content:center; margin-bottom:6px;">✅ Confirm this is the right video</button><button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Choose from list instead</button>`
               : notice;
-            if (isAdmin) document.getElementById('confirmYoutubeBtn').onclick = () => confirmYoutubeLink(song, singerName);
+            if (isAdmin) {
+              document.getElementById('confirmYoutubeBtn').onclick = () => confirmYoutubeLink(song, singerName);
+              document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
+            }
           }
           return;
+        }
+        if (isAdmin) {
+          confirmRow.innerHTML = `<button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Search YouTube for this song</button>`;
+          document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
         }
         // No YouTube video found (or not searched yet) - play the MediaUrl in its place, if any.
         container.innerHTML = song.mediaUrl
@@ -1177,13 +1193,15 @@ function upcomingSundays() {
     }
 
     // Auto-search only caches a suggested match; an admin must confirm it before it's saved
-    // as the song's real YouTube link and shown to everyone else.
-    async function confirmYoutubeLink(song, singerName) {
+    // as the song's real YouTube link and shown to everyone else. An explicit videoId (picked
+    // from the candidates list) is saved directly instead of the cached auto-search guess.
+    async function confirmYoutubeLink(song, singerName, videoId) {
       const btn = document.getElementById('confirmYoutubeBtn');
       if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
       try {
         const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube/confirm`, {
-          method: 'POST', headers: authHeaders()
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify(videoId ? { videoId } : {})
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Server responded ${res.status}`);
@@ -1192,6 +1210,36 @@ function upcomingSundays() {
       } catch (err) {
         alert('Could not save the YouTube link: ' + err.message);
         if (btn) { btn.disabled = false; btn.textContent = '✅ Confirm this is the right video'; }
+      }
+    }
+
+    // Lets an admin pick the right video from several search results instead of trusting
+    // the single top auto-search guess.
+    async function loadYoutubeCandidates(song, singerName) {
+      const confirmRow = document.getElementById('youtubeConfirmRow');
+      confirmRow.innerHTML = '<div class="comment-hint">Searching YouTube…</div>';
+      try {
+        const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube/candidates`, { headers: authHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Server responded ${res.status}`);
+        if (!data.candidates.length) {
+          confirmRow.innerHTML = '<p class="comment-hint">No YouTube results found.</p>';
+          return;
+        }
+        confirmRow.innerHTML = data.candidates.map((c, i) => `
+          <div class="youtube-candidate" id="ytCandidate${i}">
+            ${c.thumbnail ? `<img src="${c.thumbnail}" alt="">` : ''}
+            <div class="youtube-candidate-info">
+              <div class="youtube-candidate-title">${escapeHtml(c.title)}</div>
+              <div class="youtube-candidate-channel">${escapeHtml(c.channelTitle)}</div>
+            </div>
+          </div>
+        `).join('');
+        data.candidates.forEach((c, i) => {
+          document.getElementById(`ytCandidate${i}`).onclick = () => confirmYoutubeLink(song, singerName, c.videoId);
+        });
+      } catch (err) {
+        confirmRow.innerHTML = `<p class="comment-hint">Search failed: ${escapeHtml(err.message)}</p>`;
       }
     }
     // Single search box: matches singer name/Amharic name (pulling in all their songs)
