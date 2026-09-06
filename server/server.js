@@ -681,13 +681,23 @@ app.get('/api/mezmurs/:id/youtube', async (req, res) => {
 });
 
 // Admin review step: saves a YouTube video as the song's confirmed link, the field everyone
-// else sees. With a videoId in the body (admin picked one from the candidates list), that one
-// is saved directly; otherwise falls back to promoting the cached auto-search suggestion.
-// Nothing is shown to regular users until an admin does this.
+// else sees. Three ways it can be called:
+//   - no "videoId" key at all: promote the cached auto-search suggestion (plain confirm button)
+//   - "videoId": "<link or id>": save that one directly (picked from the candidates list, or
+//     pasted manually)
+//   - "videoId": "" (present but empty): admin looked and confirmed none of the results is the
+//     right video, or none exists - same "reviewed, nothing found" state the old auto-search
+//     used to write, so it stops nagging for review on every visit.
 app.post('/api/mezmurs/:id/youtube/confirm', requireAdmin, async (req, res) => {
   try {
-    const manualVideoId = extractYoutubeId(req.body?.videoId);
-    if (manualVideoId) {
+    if (req.body && 'videoId' in req.body) {
+      const raw = (req.body.videoId || '').toString().trim();
+      if (!raw) {
+        await db`UPDATE songs SET youtube_video_id = '', youtube_suggested_id = '' WHERE id = ${req.params.id}`;
+        return res.json({ videoId: null, confirmed: true });
+      }
+      const manualVideoId = extractYoutubeId(raw);
+      if (!manualVideoId) return res.status(400).json({ error: 'Could not recognize that YouTube link/ID' });
       await db`UPDATE songs SET youtube_video_id = ${manualVideoId}, youtube_suggested_id = ${manualVideoId} WHERE id = ${req.params.id}`;
       return res.json({ videoId: manualVideoId, confirmed: true });
     }

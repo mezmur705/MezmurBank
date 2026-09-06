@@ -139,6 +139,10 @@
     .youtube-candidate-info { min-width: 0; }
     .youtube-candidate-title { font-size: 0.82rem; font-weight: 600; color: #1a202c; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     .youtube-candidate-channel { font-size: 0.75rem; color: #718096; margin-top: 2px; }
+    .youtube-manual-row { display: flex; gap: 6px; margin-top: 4px; }
+    .youtube-manual-row input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 0.82rem; }
+    .youtube-no-video-link { text-align: center; color: #718096; font-size: 0.8rem; text-decoration: underline; cursor: pointer; margin-top: 8px; }
+    .youtube-no-video-link:hover { color: #4a5568; }
     iframe { width: 100%; height: 100%; border: none; }
     .opensong-panel { margin-top: 15px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; max-height: 400px; overflow-y: auto; }
     .opensong-panel h4 { margin: 0 0 8px 0; color: #2b6cb0; }
@@ -1199,9 +1203,13 @@ function upcomingSundays() {
       const btn = document.getElementById('confirmYoutubeBtn');
       if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
       try {
+        // videoId === undefined (arg omitted): use the cached auto-search suggestion.
+        // videoId === '' (explicitly empty): confirm "no video for this song".
+        // videoId === '<id>': save that one directly.
+        const body = videoId !== undefined ? { videoId } : {};
         const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube/confirm`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify(videoId ? { videoId } : {})
+          body: JSON.stringify(body)
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Server responded ${res.status}`);
@@ -1213,6 +1221,18 @@ function upcomingSundays() {
       }
     }
 
+    // Shown below the candidates list (or instead of it, if the search found nothing) so an
+    // admin isn't stuck when the right video isn't in the results at all.
+    function youtubeManualEntryRow() {
+      return `
+        <div class="youtube-manual-row">
+          <input type="text" id="ytManualInput" placeholder="Not in the list? Paste a YouTube link or video ID">
+          <button class="keyboard-btn" id="ytManualBtn">Add</button>
+        </div>
+        <div class="youtube-no-video-link" id="ytNoVideoBtn">None of these - no video for this song</div>
+      `;
+    }
+
     // Lets an admin pick the right video from several search results instead of trusting
     // the single top auto-search guess.
     async function loadYoutubeCandidates(song, singerName) {
@@ -1222,22 +1242,27 @@ function upcomingSundays() {
         const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube/candidates`, { headers: authHeaders() });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Server responded ${res.status}`);
-        if (!data.candidates.length) {
-          confirmRow.innerHTML = '<p class="comment-hint">No YouTube results found.</p>';
-          return;
-        }
-        confirmRow.innerHTML = data.candidates.map((c, i) => `
-          <div class="youtube-candidate" id="ytCandidate${i}">
-            ${c.thumbnail ? `<img src="${c.thumbnail}" alt="">` : ''}
-            <div class="youtube-candidate-info">
-              <div class="youtube-candidate-title">${escapeHtml(c.title)}</div>
-              <div class="youtube-candidate-channel">${escapeHtml(c.channelTitle)}</div>
-            </div>
-          </div>
-        `).join('');
+        const listHtml = data.candidates.length
+          ? data.candidates.map((c, i) => `
+              <div class="youtube-candidate" id="ytCandidate${i}">
+                ${c.thumbnail ? `<img src="${c.thumbnail}" alt="">` : ''}
+                <div class="youtube-candidate-info">
+                  <div class="youtube-candidate-title">${escapeHtml(c.title)}</div>
+                  <div class="youtube-candidate-channel">${escapeHtml(c.channelTitle)}</div>
+                </div>
+              </div>
+            `).join('')
+          : '<p class="comment-hint">No YouTube results found.</p>';
+        confirmRow.innerHTML = listHtml + youtubeManualEntryRow();
         data.candidates.forEach((c, i) => {
           document.getElementById(`ytCandidate${i}`).onclick = () => confirmYoutubeLink(song, singerName, c.videoId);
         });
+        document.getElementById('ytManualBtn').onclick = () => {
+          const input = document.getElementById('ytManualInput').value.trim();
+          if (!input) return;
+          confirmYoutubeLink(song, singerName, input);
+        };
+        document.getElementById('ytNoVideoBtn').onclick = () => confirmYoutubeLink(song, singerName, '');
       } catch (err) {
         confirmRow.innerHTML = `<p class="comment-hint">Search failed: ${escapeHtml(err.message)}</p>`;
       }
