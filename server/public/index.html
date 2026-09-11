@@ -224,7 +224,7 @@
       <div class="account-menu-header" id="accountMenuHeader" style="display:none;"></div>
       <div class="account-menu-item" onclick="showFavoritesView()">❤️ Favorites</div>
       <div class="account-menu-item" onclick="showRecentlyViewedView()">🕘 Recently Viewed</div>
-      <div class="account-menu-item" onclick="showDriveExportsView()">📁 Exported Files</div>
+      <div class="account-menu-item" onclick="showDriveExportsView()">📁 Export to OpenSong</div>
       <div class="account-menu-item" onclick="showSundaySongsView()">🗓️ Sunday Songs</div>
       <div class="account-menu-item" onclick="showNewSongsView()">🆕 New Songs</div>
       <div class="account-menu-divider admin-only"></div>
@@ -599,7 +599,7 @@
     async function showDriveExportsView() {
       closeAccountMenu();
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = '<h2>📁 Exported Files</h2><div id="driveExportsContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
+      middleFrame.innerHTML = '<h2>📁 Export to OpenSong</h2><div id="driveExportsContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
       const container = document.getElementById('driveExportsContainer');
       try {
         const res = await fetch('/api/drive-exports');

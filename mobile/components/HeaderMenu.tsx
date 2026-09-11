@@ -43,7 +43,7 @@ export default function HeaderMenu() {
           <View style={styles.menu}>
             <MenuItem icon="favorite-border" label="Favorites" onPress={() => goToAccountScreen('Favorites')} />
             <MenuItem icon="history" label="Recently Viewed" onPress={() => goToAccountScreen('RecentlyViewed')} />
-            <MenuItem icon="folder-shared" label="Exported Files" onPress={goToDriveExports} />
+            <MenuItem icon="folder-shared" label="Export to OpenSong" onPress={goToDriveExports} />
             <MenuItem icon="event" label="Sunday Songs" onPress={goToSundaySongs} />
             <View style={styles.divider} />
             {user ? (

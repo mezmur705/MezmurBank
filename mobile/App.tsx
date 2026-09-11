@@ -55,7 +55,7 @@ function RootNavigator() {
         <Stack.Screen name="SongDetail" component={SongDetail} options={{ title: '' }} />
         <Stack.Screen name="RecentlyViewed" component={RecentlyViewed} options={{ title: 'Recently Viewed' }} />
         <Stack.Screen name="Favorites" component={Favorites} options={{ title: 'Favorites' }} />
-        <Stack.Screen name="DriveExports" component={DriveExports} options={{ title: 'Exported Files' }} />
+        <Stack.Screen name="DriveExports" component={DriveExports} options={{ title: 'Export to OpenSong' }} />
         <Stack.Screen name="SundaySongs" component={SundaySongs} options={{ title: 'Sunday Songs' }} />
       </Stack.Navigator>
       <SignInSheet visible={signInSheetVisible} onClose={dismissSignInSheet} />
