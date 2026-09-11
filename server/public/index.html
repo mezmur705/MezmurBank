@@ -645,6 +645,7 @@
         .filter(({ song }) => isNewSong(song))
         .sort((a, b) => new Date(b.song.createdAt) - new Date(a.song.createdAt))
         .map(({ song }) => song.id);
+      renderPlayAllButton(middleFrame.querySelector('h2'), newest);
       renderFlatSongList(document.getElementById('newSongsContainer'), newest, 'No new songs in the last ' + NEW_BADGE_DAYS + ' days.');
     }
 
