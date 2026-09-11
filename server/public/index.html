@@ -798,7 +798,12 @@ function upcomingSundays() {
       if (playableCount) document.getElementById('sundayPlayAllBtn').onclick = () => startPlayAll(items.map(i => i.songId));
     }
 
+    // Regular navigation (tree clicks, search results, favorites/sunday rows) always exits
+    // any active "Play All" queue - only startPlayAll/advanceQueue should preserve one, and
+    // they call displayLyric directly rather than through here.
     function jumpToSongById(songId) {
+      playQueue = null;
+      playQueueIndex = 0;
       const entry = songIndex.get(songId);
       if (entry) displayLyric(entry.song, entry.singerName);
     }
@@ -1206,7 +1211,8 @@ function upcomingSundays() {
       if (!playable.length) { alert('No songs with a confirmed YouTube video in this list.'); return; }
       playQueue = playable;
       playQueueIndex = 0;
-      jumpToSongById(playQueue[0]);
+      const entry = songIndex.get(playQueue[0]);
+      if (entry) displayLyric(entry.song, entry.singerName);
     }
 
     function advanceQueue() {
@@ -1219,7 +1225,8 @@ function upcomingSundays() {
         alert('Playlist finished.');
         return;
       }
-      jumpToSongById(playQueue[playQueueIndex]);
+      const entry = songIndex.get(playQueue[playQueueIndex]);
+      if (entry) displayLyric(entry.song, entry.singerName);
     }
 
     function stopQueue() {
