@@ -578,7 +578,7 @@ app.get('/api/sunday-songs', async (req, res) => {
   try {
     const date = isValidSundayWithinMonth(req.query.date) ? req.query.date : nextSundayDate();
     const rows = await db`
-      SELECT ss.song_id, ss.position, s.title, s.open_song_id, sg.name AS singer_name
+      SELECT ss.song_id, ss.position, s.title, s.open_song_id, s.youtube_video_id, sg.name AS singer_name
       FROM sunday_songs ss
       JOIN songs s ON s.id = ss.song_id
       JOIN singers sg ON sg.id = s.singer_id
@@ -587,7 +587,7 @@ app.get('/api/sunday-songs', async (req, res) => {
     `;
     res.json({
       date,
-      songs: rows.map(r => ({ songId: r.song_id, position: r.position, title: r.title, openSongId: r.open_song_id, singer: r.singer_name })),
+      songs: rows.map(r => ({ songId: r.song_id, position: r.position, title: r.title, openSongId: r.open_song_id, singer: r.singer_name, youtubeVideoId: r.youtube_video_id })),
     });
   } catch (err) {
     console.error(err);

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, StyleSheet, useWindowDimensions, Share, TouchableOpacity, TextInput, Alert, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import YoutubePlayer from 'react-native-youtube-iframe';
+import YoutubePlayer, { PLAYER_STATES } from 'react-native-youtube-iframe';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
@@ -35,13 +35,36 @@ const REACTIONS: { key: 'like_count' | 'love_count' | 'haha_count' | 'wow_count'
   { key: 'angry_count', type: 'angry', emoji: '😠', label: 'Angry' },
 ];
 
-export default function SongDetail({ route }: Props) {
-  const { songId, query = '' } = route.params;
+export default function SongDetail({ route, navigation }: Props) {
+  const { songId, query = '', queue, queueIndex = 0 } = route.params;
   const { songs } = useLibrary();
   const { user, session, promptSignIn } = useAuth();
   const { width } = useWindowDimensions();
 
   const song = useMemo(() => songs.find(s => s.id === songId), [songs, songId]);
+
+  // "Play All" auto-advance: skips any queued song without a video, in case the list
+  // changed since the queue was built. Silently stops once nothing playable is left.
+  const advanceQueue = () => {
+    if (!queue) return;
+    for (let nextIndex = queueIndex + 1; nextIndex < queue.length; nextIndex++) {
+      const nextSong = songs.find(s => s.id === queue[nextIndex]);
+      if (nextSong?.youtube_video_id) {
+        navigation.replace('SongDetail', { songId: queue[nextIndex], query, queue, queueIndex: nextIndex });
+        return;
+      }
+    }
+    Alert.alert('Playlist finished', 'That was the last song.');
+  };
+
+  const stopQueue = () => navigation.replace('SongDetail', { songId, query });
+
+  // Defensive: if the current song in the queue has no video (data changed after the
+  // queue was built), don't strand the user on a silent screen - skip past it.
+  useEffect(() => {
+    if (queue && song && !song.youtube_video_id) advanceQueue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue, song]);
 
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
@@ -237,9 +260,28 @@ export default function SongDetail({ route }: Props) {
         </Text>
       ) : null}
 
+      {queue ? (
+        <View style={styles.queueBar}>
+          <Text style={styles.queueText}>Playing {queueIndex + 1} of {queue.length}</Text>
+          <TouchableOpacity onPress={advanceQueue}>
+            <Text style={styles.queueAction}>Skip ⏭</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={stopQueue}>
+            <Text style={styles.queueAction}>Stop ■</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {song.youtube_video_id ? (
         <View style={styles.playerWrap}>
-          <YoutubePlayer height={(width - 32) * 0.5625} videoId={song.youtube_video_id} />
+          <YoutubePlayer
+            height={(width - 32) * 0.5625}
+            videoId={song.youtube_video_id}
+            play={!!queue}
+            onChangeState={(state: PLAYER_STATES) => {
+              if (state === PLAYER_STATES.ENDED) advanceQueue();
+            }}
+          />
         </View>
       ) : null}
 
@@ -374,6 +416,9 @@ const styles = StyleSheet.create({
   singer: { fontSize: 15, color: colors.textSecondary, marginTop: 4, marginBottom: 16 },
   sourceCredit: { fontSize: 12, color: colors.textSecondary, marginTop: -12, marginBottom: 16, textDecorationLine: 'underline' },
   playerWrap: { marginBottom: 16, borderRadius: 8, overflow: 'hidden' },
+  queueBar: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 10 },
+  queueText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  queueAction: { fontSize: 13, fontWeight: '700', color: colors.accent },
   lyricsCard: {
     backgroundColor: colors.surface,
     borderRadius: 12,

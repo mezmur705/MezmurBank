@@ -1,8 +1,10 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
+import { useLibrary } from '../context/LibraryContext';
 import { getSundaySongs } from '../lib/api';
 import type { SundaySong } from '../lib/api';
 import { colors } from '../theme';
@@ -16,10 +18,22 @@ function formatSundayDate(dateStr: string): string {
 
 export default function SundaySongs() {
   const navigation = useNavigation<NavProp>();
+  const { songs: librarySongs } = useLibrary();
   const [date, setDate] = useState<string | null>(null);
   const [songs, setSongs] = useState<SundaySong[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // SundaySong itself doesn't carry youtube_video_id - cross-reference the full library.
+  const playableIds = useMemo(() => {
+    const byId = new Map(librarySongs.map(s => [s.id, s]));
+    return songs.filter(s => byId.get(s.songId)?.youtube_video_id).map(s => s.songId);
+  }, [songs, librarySongs]);
+
+  const playAll = () => {
+    if (!playableIds.length) return;
+    navigation.navigate('SongDetail', { songId: playableIds[0], queue: playableIds, queueIndex: 0 });
+  };
 
   const load = useCallback(() => {
     setLoading(true);
@@ -77,6 +91,12 @@ export default function SundaySongs() {
   return (
     <View style={styles.container}>
       {date ? <Text style={styles.dateHeader}>{formatSundayDate(date)}</Text> : null}
+      {playableIds.length > 0 ? (
+        <TouchableOpacity style={styles.playAllButton} onPress={playAll} activeOpacity={0.7}>
+          <MaterialCommunityIcons name="play-circle" size={20} color="#fff" />
+          <Text style={styles.playAllText}>Play All ({playableIds.length})</Text>
+        </TouchableOpacity>
+      ) : null}
       <FlatList
         data={songs}
         keyExtractor={item => item.songId}
@@ -92,6 +112,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, padding: 24 },
   dateHeader: { fontSize: 14, fontWeight: '600', color: colors.textSecondary, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  playAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 10,
+    borderRadius: 24,
+  },
+  playAllText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   listContent: { paddingVertical: 8, paddingBottom: 24 },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 14 },
   index: {

@@ -9,6 +9,7 @@
   <script src="/vendor/pptxgenjs/pptxgen.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background-color: #f4f6f8; }
@@ -110,10 +111,11 @@
     .comment-meta { display: flex; justify-content: space-between; font-size: 0.8rem; color: #718096; margin-bottom: 4px; }
     .comment-text { color: #1a202c; white-space: pre-line; line-height: 1.5; }
     .comment-hint { color: #a0aec0; font-size: 0.85rem; }
-    .sunday-song-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #edf2f7; font-size: 0.88rem; }
-    .sunday-song-info { flex: 1; min-width: 0; cursor: pointer; display: flex; align-items: baseline; gap: 6px; overflow: hidden; }
+    .sunday-song-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #edf2f7; font-size: 0.88rem; }
+    .sunday-song-thumb { width: 56px; height: 32px; object-fit: cover; border-radius: 4px; flex-shrink: 0; background: #000; }
+    .sunday-song-info { flex: 1; min-width: 0; cursor: pointer; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
     .sunday-song-title { font-weight: 600; color: #1a202c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .sunday-song-singer { font-size: 0.78rem; color: #718096; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sunday-song-singer { font-size: 0.78rem; color: #718096; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sunday-song-actions { display: flex; gap: 3px; flex-shrink: 0; }
     .sunday-song-actions button { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 0.8rem; line-height: 1.4; }
     .sunday-song-actions button:hover { background: #e2e8f0; }
@@ -245,6 +247,7 @@
     <div class="frame right-frame" id="rightFrame">
       <h3>Media Search</h3>
       <p style="font-size: 0.85rem; color: #718096; margin-top: 5px;">Select a Mezmur to auto-generate YouTube search video.</p>
+      <div id="youtubeQueueBar" style="display:none; align-items:center; gap:10px; margin-bottom:6px; font-size:0.85rem;"></div>
       <div class="youtube-container" id="youtubeContainer"><div style="color: white; text-align: center; padding-top: 100px;">No video loaded</div></div>
       <div id="youtubeConfirmRow" style="margin-top:8px;"></div>
       <div class="opensong-panel" id="openSongFormatPanel" style="display:none;"></div>
@@ -266,6 +269,12 @@
   <script>
     let isAdmin = false;
     let selectedSongId = null;
+
+    // "Play All" queue - null when nothing's queued. ytQueuePlayer is only used while a
+    // queue is active, so auto-advance (via the YouTube IFrame API) can fire on video end.
+    let playQueue = null;
+    let playQueueIndex = 0;
+    let ytQueuePlayer = null;
 
     function formatOpenSongId(openSongId) {
       return openSongId == null ? '----' : String(openSongId).padStart(4, '0');
@@ -557,6 +566,19 @@
       }
     }
 
+    // Inserts a "Play All" button right after a heading element, sized to how many of the
+    // given song ids actually have a confirmed YouTube video. No-op if none do.
+    function renderPlayAllButton(headingEl, songIds) {
+      const playableCount = songIds.filter(id => songIndex.get(id)?.song.youtubeVideoId).length;
+      if (!playableCount || !headingEl) return;
+      const btn = document.createElement('button');
+      btn.className = 'keyboard-btn';
+      btn.style.cssText = 'margin-left:12px; padding:5px 12px; font-size:0.85rem; vertical-align:middle;';
+      btn.textContent = `▶ Play All (${playableCount})`;
+      btn.onclick = () => startPlayAll(songIds);
+      headingEl.appendChild(btn);
+    }
+
     // Renders a flat list of songs (by id, via songIndex) - used by Favorites/Recently Viewed.
     function renderFlatSongList(container, songIds, emptyMessage) {
       container.innerHTML = '';
@@ -579,6 +601,7 @@
       middleFrame.innerHTML = '<h2>❤️ Favorites</h2><div id="favoritesListContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
       try {
         const ids = await getFavoriteSongIds();
+        renderPlayAllButton(middleFrame.querySelector('h2'), ids);
         renderFlatSongList(document.getElementById('favoritesListContainer'), ids, 'No favorite songs yet.');
       } catch (err) {
         document.getElementById('favoritesListContainer').innerHTML = `<p class="comment-hint">Could not load favorites: ${escapeHtml(err.message)}</p>`;
@@ -751,8 +774,15 @@ function upcomingSundays() {
 
     function renderSundaySongsList(container, items) {
       if (!items.length) { container.innerHTML = '<p class="comment-hint">No songs added for this Sunday yet.</p>'; return; }
-      container.innerHTML = items.map((item, index) => `
+      const playableCount = items.filter(i => i.youtubeVideoId).length;
+      const playAllHtml = playableCount
+        ? `<button class="keyboard-btn" id="sundayPlayAllBtn" style="margin-bottom:10px; padding:5px 12px; font-size:0.85rem;">▶ Play All (${playableCount})</button>`
+        : '';
+      container.innerHTML = playAllHtml + items.map((item, index) => `
         <div class="sunday-song-row">
+          ${item.youtubeVideoId
+            ? `<img class="sunday-song-thumb" src="https://img.youtube.com/vi/${item.youtubeVideoId}/mqdefault.jpg" alt="" onclick='jumpToSongById(${JSON.stringify(item.songId)})'>`
+            : ''}
           <div class="sunday-song-info" onclick='jumpToSongById(${JSON.stringify(item.songId)})'>
             <span class="sunday-song-title">${formatOpenSongId(item.openSongId)} ${escapeHtml(item.title)}</span>
             <span class="sunday-song-singer">${escapeHtml(item.singer)}</span>
@@ -765,6 +795,7 @@ function upcomingSundays() {
         </div>
       `).join('');
       container.dataset.songIds = JSON.stringify(items.map(i => i.songId));
+      if (playableCount) document.getElementById('sundayPlayAllBtn').onclick = () => startPlayAll(items.map(i => i.songId));
     }
 
     function jumpToSongById(songId) {
@@ -1094,8 +1125,10 @@ function upcomingSundays() {
     function displaySingerSongs(singerName) {
       const singer = mezmurData.find(item => item.singer === singerName); if (!singer) return;
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><h2>${singer.singer}${amharicName(singer.singerAmharic)}</h2><button class="edit-btn-inline" id="editSingerBtn">✏️ Edit Singer</button></div><p style="margin-bottom:15px;">Available Mezmurs (${singer.songs.length}):</p><div id="middleTree"></div>`;
+      const playableCount = singer.songs.filter(s => s.youtubeVideoId).length;
+      middleFrame.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><h2>${singer.singer}${amharicName(singer.singerAmharic)}</h2><button class="edit-btn-inline" id="editSingerBtn">✏️ Edit Singer</button></div><div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;"><p style="margin:0;">Available Mezmurs (${singer.songs.length}):</p>${playableCount ? `<button class="keyboard-btn" id="playAllSingerBtn" style="padding:5px 12px; font-size:0.85rem;">▶ Play All (${playableCount})</button>` : ''}</div><div id="middleTree"></div>`;
       document.getElementById('editSingerBtn').onclick = () => openEditSingerModal(singer);
+      if (playableCount) document.getElementById('playAllSingerBtn').onclick = () => startPlayAll(singer.songs.map(s => s.id));
       renderSongTree(document.getElementById('middleTree'), [{ singer: singer.singer, singerAmharic: singer.singerAmharic, songs: singer.songs }]);
       middleFrame.scrollTop = 0;
       window.scrollTo(0, 0);
@@ -1156,16 +1189,68 @@ function upcomingSundays() {
       return `<audio controls autoplay style="width:90%; margin-top:100px;" src="${escapeHtml(mediaUrl)}"></audio>`;
     }
 
+    function renderQueueBar() {
+      const bar = document.getElementById('youtubeQueueBar');
+      if (!playQueue) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+      bar.style.display = 'flex';
+      bar.innerHTML = `<span style="flex:1; font-weight:600; color:#2b6cb0;">▶ Playing ${playQueueIndex + 1} of ${playQueue.length}</span><button class="copy-btn" id="queueSkipBtn">Skip ⏭</button><button class="copy-btn" id="queueStopBtn">Stop ■</button>`;
+      document.getElementById('queueSkipBtn').onclick = () => advanceQueue();
+      document.getElementById('queueStopBtn').onclick = () => stopQueue();
+    }
+
+    // Builds a queue from whichever songs (by id) have a confirmed YouTube video, then
+    // starts playing the first one. Used by every "Play All" button (singer, Sunday
+    // Songs, Favorites).
+    function startPlayAll(songIds) {
+      const playable = songIds.filter(id => songIndex.get(id)?.song.youtubeVideoId);
+      if (!playable.length) { alert('No songs with a confirmed YouTube video in this list.'); return; }
+      playQueue = playable;
+      playQueueIndex = 0;
+      jumpToSongById(playQueue[0]);
+    }
+
+    function advanceQueue() {
+      if (!playQueue) return;
+      playQueueIndex++;
+      if (playQueueIndex >= playQueue.length) {
+        playQueue = null;
+        playQueueIndex = 0;
+        renderQueueBar();
+        alert('Playlist finished.');
+        return;
+      }
+      jumpToSongById(playQueue[playQueueIndex]);
+    }
+
+    function stopQueue() {
+      playQueue = null;
+      playQueueIndex = 0;
+      if (ytQueuePlayer) { try { ytQueuePlayer.destroy(); } catch (err) {} ytQueuePlayer = null; }
+      renderQueueBar();
+      const entry = selectedSongId && songIndex.get(selectedSongId);
+      if (entry) loadYouTubeFrame(entry.song, entry.singerName);
+    }
+
     async function loadYouTubeFrame(song, singerName) {
       const container = document.getElementById('youtubeContainer');
       const confirmRow = document.getElementById('youtubeConfirmRow');
       confirmRow.innerHTML = '';
+      renderQueueBar();
       container.innerHTML = '<div style="color:white; text-align:center; padding-top:100px;">Searching YouTube…</div>';
       try {
         const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube`);
         const data = await res.json();
         if (data.videoId) {
-          container.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.videoId}" allowfullscreen></iframe>`;
+          if (playQueue && window.YT && window.YT.Player) {
+            container.innerHTML = '<div id="ytQueuePlayerMount" style="width:100%; height:100%;"></div>';
+            ytQueuePlayer = new YT.Player('ytQueuePlayerMount', {
+              videoId: data.videoId,
+              playerVars: { autoplay: 1 },
+              events: { onStateChange: event => { if (event.data === YT.PlayerState.ENDED) advanceQueue(); } }
+            });
+          } else {
+            container.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.videoId}${playQueue ? '?autoplay=1' : ''}" allowfullscreen></iframe>`;
+          }
           if (data.confirmed) {
             confirmRow.innerHTML = isAdmin
               ? `<div style="color:#276749; font-size:0.85rem; font-weight:600; margin-bottom:6px;">✅ Confirmed</div><button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Wrong video? Choose from list</button>`
@@ -1183,6 +1268,9 @@ function upcomingSundays() {
           }
           return;
         }
+        // Defensive: a queued song should always have a video (startPlayAll pre-filters),
+        // but if data changed since the queue was built, skip it instead of stalling.
+        if (playQueue) { advanceQueue(); return; }
         if (isAdmin) {
           confirmRow.innerHTML = `<button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Search YouTube for this song</button>`;
           document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);

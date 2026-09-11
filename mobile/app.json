@@ -26,7 +26,7 @@
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.mezmur705.mobile",
-      "versionCode": 3
+      "versionCode": 5
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -35,7 +35,8 @@
       "expo-speech-recognition",
       "expo-status-bar",
       "@react-native-google-signin/google-signin",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/withAdiRegistration.js"
     ],
     "extra": {
       "eas": {

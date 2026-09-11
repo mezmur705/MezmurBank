@@ -25,6 +25,16 @@ export default function SongsList({ route, navigation }: Props) {
     [songs, singerId]
   );
 
+  const playableIds = useMemo(
+    () => singerSongs.filter(s => s.youtube_video_id).map(s => s.id),
+    [singerSongs]
+  );
+
+  const playAll = () => {
+    if (!playableIds.length) return;
+    navigation.navigate('SongDetail', { songId: playableIds[0], query, queue: playableIds, queueIndex: 0 });
+  };
+
   const renderItem = ({ item, index }: { item: SongWithSinger; index: number }) => (
     <TouchableOpacity
       style={styles.row}
@@ -48,6 +58,12 @@ export default function SongsList({ route, navigation }: Props) {
 
   return (
     <View style={styles.container}>
+      {playableIds.length > 0 ? (
+        <TouchableOpacity style={styles.playAllButton} onPress={playAll} activeOpacity={0.7}>
+          <MaterialCommunityIcons name="play-circle" size={20} color="#fff" />
+          <Text style={styles.playAllText}>Play All ({playableIds.length})</Text>
+        </TouchableOpacity>
+      ) : null}
       <FlatList
         data={singerSongs}
         keyExtractor={item => item.id}
@@ -63,6 +79,18 @@ export default function SongsList({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  playAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 24,
+  },
+  playAllText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   listContent: { paddingVertical: 8, paddingBottom: 24 },
   row: {
     flexDirection: 'row',
