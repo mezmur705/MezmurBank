@@ -23,6 +23,11 @@ export default function HeaderMenu() {
     navigation.navigate(screen);
   };
 
+  const goToNewSongs = () => {
+    setOpen(false);
+    navigation.navigate('NewSongs');
+  };
+
   const goToDriveExports = () => {
     setOpen(false);
     navigation.navigate('DriveExports');
@@ -42,9 +47,10 @@ export default function HeaderMenu() {
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
           <View style={styles.menu}>
             <MenuItem icon="favorite-border" label="Favorites" onPress={() => goToAccountScreen('Favorites')} />
-            <MenuItem icon="history" label="Recently Viewed" onPress={() => goToAccountScreen('RecentlyViewed')} />
-            <MenuItem icon="folder-shared" label="Export to OpenSong" onPress={goToDriveExports} />
+            <MenuItem icon="fiber-new" label="New Songs" onPress={goToNewSongs} />
             <MenuItem icon="event" label="Sunday Songs" onPress={goToSundaySongs} />
+            <MenuItem icon="folder-shared" label="Export to OpenSong" onPress={goToDriveExports} />
+            <MenuItem icon="history" label="Recently Viewed" onPress={() => goToAccountScreen('RecentlyViewed')} />
             <View style={styles.divider} />
             {user ? (
               <MenuItem

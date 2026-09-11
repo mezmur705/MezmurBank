@@ -6,6 +6,7 @@ export type RootStackParamList = {
   SongDetail: { songId: string; query?: string; queue?: string[]; queueIndex?: number };
   RecentlyViewed: undefined;
   Favorites: undefined;
+  NewSongs: undefined;
   DriveExports: undefined;
   SundaySongs: undefined;
 };

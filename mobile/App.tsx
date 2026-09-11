@@ -13,6 +13,7 @@ import SongsList from './screens/SongsList';
 import SongDetail from './screens/SongDetail';
 import RecentlyViewed from './screens/RecentlyViewed';
 import Favorites from './screens/Favorites';
+import NewSongs from './screens/NewSongs';
 import DriveExports from './screens/DriveExports';
 import SundaySongs from './screens/SundaySongs';
 
@@ -55,6 +56,7 @@ function RootNavigator() {
         <Stack.Screen name="SongDetail" component={SongDetail} options={{ title: '' }} />
         <Stack.Screen name="RecentlyViewed" component={RecentlyViewed} options={{ title: 'Recently Viewed' }} />
         <Stack.Screen name="Favorites" component={Favorites} options={{ title: 'Favorites' }} />
+        <Stack.Screen name="NewSongs" component={NewSongs} options={{ title: 'New Songs' }} />
         <Stack.Screen name="DriveExports" component={DriveExports} options={{ title: 'Export to OpenSong' }} />
         <Stack.Screen name="SundaySongs" component={SundaySongs} options={{ title: 'Sunday Songs' }} />
       </Stack.Navigator>
