@@ -208,6 +208,8 @@
       .mobile-back-link { display: inline-block; }
     }
     .mobile-back-link { display: none; color: #2b6cb0; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
+    #nowPlayingBar { position: sticky; top: 0; z-index: 90; background: #1a365d; color: white; padding: 8px 20px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 2px 5px rgba(0,0,0,0.1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #nowPlayingBar .now-playing-singer { font-weight: 400; opacity: 0.8; }
   </style>
 </head>
 <body>
@@ -243,6 +245,8 @@
     </div>
   </header>
 
+  <div id="nowPlayingBar" style="display:none;"></div>
+
   <div class="app-container">
     <div class="frame left-frame" id="leftFrame">
       <h3>Singers</h3>
@@ -251,8 +255,6 @@
     <div class="frame middle-frame" id="middleFrame"></div>
     <div class="frame right-frame" id="rightFrame">
       <div id="youtubeSection">
-        <h3>Media Search</h3>
-        <p style="font-size: 0.85rem; color: #718096; margin-top: 5px;">Select a Mezmur to auto-generate YouTube search video.</p>
         <div id="youtubeQueueBar" style="display:none; align-items:center; gap:10px; margin-bottom:6px; font-size:0.85rem;"></div>
         <div class="youtube-container" id="youtubeContainer"><div style="color: white; text-align: center; padding-top: 100px;">No video loaded</div></div>
         <div id="youtubeConfirmRow" style="margin-top:8px;"></div>
@@ -612,6 +614,7 @@
 
     async function showFavoritesView() {
       closeAccountMenu();
+      hideNowPlayingBar();
       if (!currentUser) { promptSignIn(); return; }
       const middleFrame = document.getElementById('middleFrame');
       middleFrame.innerHTML = '<h2>❤️ Favorites</h2><div id="favoritesListContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
@@ -625,11 +628,13 @@
     }
     async function showRecentlyViewedView() {
       closeAccountMenu();
+      hideNowPlayingBar();
       if (!currentUser) { promptSignIn(); return; }
       const middleFrame = document.getElementById('middleFrame');
       middleFrame.innerHTML = '<h2>🕘 Recently Viewed</h2><div id="recentListContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
       try {
         const ids = await getRecentlyViewedSongIds();
+        renderPlayAllButton(middleFrame.querySelector('h2'), ids);
         renderFlatSongList(document.getElementById('recentListContainer'), ids, 'No recently viewed songs yet.');
       } catch (err) {
         document.getElementById('recentListContainer').innerHTML = `<p class="comment-hint">Could not load recently viewed songs: ${escapeHtml(err.message)}</p>`;
@@ -637,6 +642,7 @@
     }
     async function showDriveExportsView() {
       closeAccountMenu();
+      hideNowPlayingBar();
       const middleFrame = document.getElementById('middleFrame');
       middleFrame.innerHTML = '<h2>📁 Export to OpenSong</h2><div id="driveExportsContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
       const container = document.getElementById('driveExportsContainer');
@@ -655,6 +661,7 @@
 
     function showNewSongsView() {
       closeAccountMenu();
+      hideNowPlayingBar();
       const middleFrame = document.getElementById('middleFrame');
       middleFrame.innerHTML = `<h2>🆕 New Songs</h2><p class="comment-hint">Added in the last ${NEW_BADGE_DAYS} days.</p><div id="newSongsContainer" style="margin-top:15px;"></div>`;
       const newest = [...songIndex.values()]
@@ -688,6 +695,7 @@ function upcomingSundays() {
     // past Sunday shared for reference), it's added to the dropdown so it can stay selected.
     async function showSundaySongsView(date) {
       closeAccountMenu();
+      hideNowPlayingBar();
       sundaySelectedDate = date || upcomingSundays()[0];
       const middleFrame = document.getElementById('middleFrame');
       const dates = upcomingSundays();
@@ -963,6 +971,7 @@ function upcomingSundays() {
       window.scrollTo(0, 0);
     }
     function showWelcome() {
+      hideNowPlayingBar();
       const middleFrame = document.getElementById('middleFrame');
       middleFrame.innerHTML = WELCOME_HTML;
       if (!mezmurData.length) return;
@@ -1146,6 +1155,7 @@ function upcomingSundays() {
     }
     function displaySingerSongs(singerName) {
       const singer = mezmurData.find(item => item.singer === singerName); if (!singer) return;
+      hideNowPlayingBar();
       const middleFrame = document.getElementById('middleFrame');
       const playableCount = singer.songs.filter(s => s.youtubeVideoId).length;
       middleFrame.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><h2>${singer.singer}${amharicName(singer.singerAmharic)}</h2><button class="edit-btn-inline" id="editSingerBtn">✏️ Edit Singer</button></div><div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;"><p style="margin:0;">Available Mezmurs (${singer.songs.length}):</p>${playableCount ? `<button class="keyboard-btn" id="playAllSingerBtn" style="padding:5px 12px; font-size:0.85rem;">▶ Play All (${playableCount})</button>` : ''}</div><div id="middleTree"></div>`;
@@ -1155,8 +1165,21 @@ function upcomingSundays() {
       middleFrame.scrollTop = 0;
       window.scrollTo(0, 0);
     }
+    // Stays pinned to the top of the page while scrolling through a song's video/lyrics/
+    // OpenSong format, replacing the old static "Media Search" instructional text.
+    function showNowPlayingBar(song, singerName) {
+      const bar = document.getElementById('nowPlayingBar');
+      bar.innerHTML = `${escapeHtml(song.title)} <span class="now-playing-singer">— ${escapeHtml(singerName)}</span>`;
+      bar.style.display = 'block';
+    }
+    function hideNowPlayingBar() {
+      const bar = document.getElementById('nowPlayingBar');
+      bar.style.display = 'none';
+    }
+
     function displayLyric(song, singerName) {
       markSelectedSong(song.id);
+      showNowPlayingBar(song, singerName);
       const query = document.getElementById('searchAll').value;
       const singerEntry = mezmurData.find(item => item.singer === singerName);
       const middleFrame = document.getElementById('middleFrame');
@@ -1402,6 +1425,7 @@ function upcomingSundays() {
 
       if (!query) { showWelcome(); return; }
 
+      hideNowPlayingBar();
       const totalMatches = groups.reduce((sum, g) => sum + g.songs.length, 0);
       const heading = `Search Results for "${rawQuery}"`;
       middleFrame.innerHTML = `<h2>${heading}</h2><p style="margin-bottom:15px;">${groups.length} singer(s) • ${totalMatches} mezmur(s):</p><div id="middleTree"></div>`;
