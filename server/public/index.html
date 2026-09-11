@@ -196,10 +196,15 @@
       .app-container { flex-direction: column; overflow: visible; }
       .frame { width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid #e2e8f0; }
       .left-frame, .middle-frame, .right-frame { width: 100%; }
-      .right-frame { min-height: 320px; }
-      /* Lyrics/content first on a phone - browsing the singer list is secondary, and a
-         shared song link should open straight to the song, not below the whole singer list. */
-      .middle-frame { order: -1; }
+      /* On a phone, content order matters more than the desktop's 3-column layout: video,
+         then lyrics, then the OpenSong panel, with browsing the singer list last. right-frame
+         itself becomes non-rendering so its two sections can be reordered independently of
+         middle-frame instead of moving as one block (order only reorders true siblings). */
+      .right-frame { display: contents; }
+      #youtubeSection, #opensongSection { width: 100%; box-sizing: border-box; padding: 15px; background: #fafafa; border-bottom: 1px solid #e2e8f0; }
+      #youtubeSection { order: -3; }
+      .middle-frame { order: -2; }
+      #opensongSection { order: -1; }
       .mobile-back-link { display: inline-block; }
     }
     .mobile-back-link { display: none; color: #2b6cb0; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
@@ -245,12 +250,16 @@
     </div>
     <div class="frame middle-frame" id="middleFrame"></div>
     <div class="frame right-frame" id="rightFrame">
-      <h3>Media Search</h3>
-      <p style="font-size: 0.85rem; color: #718096; margin-top: 5px;">Select a Mezmur to auto-generate YouTube search video.</p>
-      <div id="youtubeQueueBar" style="display:none; align-items:center; gap:10px; margin-bottom:6px; font-size:0.85rem;"></div>
-      <div class="youtube-container" id="youtubeContainer"><div style="color: white; text-align: center; padding-top: 100px;">No video loaded</div></div>
-      <div id="youtubeConfirmRow" style="margin-top:8px;"></div>
-      <div class="opensong-panel" id="openSongFormatPanel" style="display:none;"></div>
+      <div id="youtubeSection">
+        <h3>Media Search</h3>
+        <p style="font-size: 0.85rem; color: #718096; margin-top: 5px;">Select a Mezmur to auto-generate YouTube search video.</p>
+        <div id="youtubeQueueBar" style="display:none; align-items:center; gap:10px; margin-bottom:6px; font-size:0.85rem;"></div>
+        <div class="youtube-container" id="youtubeContainer"><div style="color: white; text-align: center; padding-top: 100px;">No video loaded</div></div>
+        <div id="youtubeConfirmRow" style="margin-top:8px;"></div>
+      </div>
+      <div id="opensongSection">
+        <div class="opensong-panel" id="openSongFormatPanel" style="display:none;"></div>
+      </div>
     </div>
   </div>
 
