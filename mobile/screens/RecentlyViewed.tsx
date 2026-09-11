@@ -37,6 +37,16 @@ export default function RecentlyViewed({ navigation }: Props) {
     return songIds.map(id => bySongId.get(id)).filter((s): s is SongWithSinger => !!s);
   }, [songIds, songs]);
 
+  const playableIds = useMemo(
+    () => recentSongs.filter(s => s.youtube_video_id).map(s => s.id),
+    [recentSongs]
+  );
+
+  const playAll = () => {
+    if (!playableIds.length) return;
+    navigation.navigate('SongDetail', { songId: playableIds[0], queue: playableIds, queueIndex: 0 });
+  };
+
   if (!user) {
     return (
       <View style={styles.center}>
@@ -74,6 +84,12 @@ export default function RecentlyViewed({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
+      {playableIds.length > 0 ? (
+        <TouchableOpacity style={styles.playAllButton} onPress={playAll} activeOpacity={0.7}>
+          <MaterialCommunityIcons name="play-circle" size={20} color="#fff" />
+          <Text style={styles.playAllText}>Play All ({playableIds.length})</Text>
+        </TouchableOpacity>
+      ) : null}
       <FlatList
         data={recentSongs}
         keyExtractor={item => item.id}
@@ -88,6 +104,18 @@ export default function RecentlyViewed({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, padding: 24 },
+  playAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 24,
+  },
+  playAllText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   listContent: { paddingVertical: 8, paddingBottom: 24 },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 12 },
   index: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
