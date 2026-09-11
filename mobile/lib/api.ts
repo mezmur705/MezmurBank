@@ -120,13 +120,15 @@ export type ReactionType = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry';
 
 // Anonymous, no sign-in required - matches the web app's reaction endpoint. Callers are
 // responsible for their own "already reacted" guard (SongDetail tracks it in AsyncStorage).
-export async function reactToSong(songId: string, type: ReactionType): Promise<void> {
+// remove: true undoes a previously-saved reaction (tapping the same emoji again) instead
+// of adding one - switching straight to a different reaction isn't supported, just undo.
+export async function reactToSong(songId: string, type: ReactionType, remove = false): Promise<void> {
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
   const response = await fetch(`${apiUrl}/api/mezmurs/${encodeURIComponent(songId)}/react`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type }),
+    body: JSON.stringify({ type, remove }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

@@ -123,20 +123,23 @@ export default function SongDetail({ route, navigation }: Props) {
   }, [songId]);
 
   // Anonymous, one reaction per song per device - matches the web app's behavior.
+  // Tapping the already-active reaction removes it; switching straight to a different one
+  // isn't supported (matches the web app), so any other reaction is a no-op while one is set.
   const handleReact = async (type: ReactionType) => {
-    if (reactedType) return;
-    setReactedType(type);
-    setReactionOverrides(prev => ({ ...prev, [type]: (song?.[`${type}_count` as keyof typeof song] as number ?? 0) + 1 }));
+    const removing = reactedType === type;
+    if (reactedType && !removing) return;
+    const baseCount = (song?.[`${type}_count` as keyof typeof song] as number) ?? 0;
+    const displayedCount = reactionOverrides[type] ?? baseCount;
+    const nextCount = Math.max(displayedCount + (removing ? -1 : 1), 0);
+    setReactedType(removing ? null : type);
+    setReactionOverrides(prev => ({ ...prev, [type]: nextCount }));
     try {
-      await reactToSong(songId, type);
-      await AsyncStorage.setItem(`mezmurify_reacted_${songId}`, type);
+      await reactToSong(songId, type, removing);
+      if (removing) await AsyncStorage.removeItem(`mezmurify_reacted_${songId}`);
+      else await AsyncStorage.setItem(`mezmurify_reacted_${songId}`, type);
     } catch (err) {
-      setReactedType(null);
-      setReactionOverrides(prev => {
-        const next = { ...prev };
-        delete next[type];
-        return next;
-      });
+      setReactedType(removing ? type : null);
+      setReactionOverrides(prev => ({ ...prev, [type]: displayedCount }));
       Alert.alert('Could not save reaction', err instanceof Error ? err.message : 'Unknown error');
     }
   };
@@ -335,7 +338,7 @@ export default function SongDetail({ route, navigation }: Props) {
             key={r.key}
             style={[styles.reactionItem, reactedType === r.type && styles.reactionItemActive]}
             onPress={() => handleReact(r.type)}
-            disabled={!!reactedType}
+            disabled={!!reactedType && reactedType !== r.type}
             accessibilityLabel={r.label}
           >
             <Text style={styles.reactionEmoji}>{r.emoji}</Text>

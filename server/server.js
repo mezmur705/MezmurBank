@@ -303,10 +303,14 @@ app.post('/api/mezmurs/:id/react', async (req, res) => {
   const type = req.body?.type;
   const column = REACTION_COLUMNS[type];
   if (!column) return res.status(400).json({ error: 'Invalid reaction type' });
+  // Undoing a reaction (tapping the same emoji again) decrements instead of incrementing.
+  // GREATEST floors at 0 so a stale/duplicate remove request can't push a count negative.
+  const delta = req.body?.remove ? `GREATEST(${column} - 1, 0)` : `${column} + 1`;
   try {
-    // column is only ever one of the fixed REACTION_COLUMNS values above, never user input.
+    // column/delta are only ever built from the fixed REACTION_COLUMNS values above, never
+    // user input directly.
     const rows = await db.unsafe(`
-      UPDATE songs SET ${column} = ${column} + 1
+      UPDATE songs SET ${column} = ${delta}
       WHERE id = $1
       RETURNING view_count, like_count, love_count, haha_count, wow_count, sad_count, angry_count
     `, [req.params.id]);

@@ -374,19 +374,26 @@
       const reacted = localStorage.getItem(`mezmurify_reacted_${songId}`);
       document.querySelectorAll('#reactionRow .reaction-btn').forEach(btn => {
         const type = btn.dataset.type;
+        const isActive = reacted === type;
         btn.querySelector('.reaction-count').innerText = stats.reactions[type];
-        btn.classList.toggle('active', reacted === type);
-        btn.disabled = !!reacted;
+        btn.classList.toggle('active', isActive);
+        // Only the already-active reaction stays clickable, so tapping it again can remove
+        // it - switching straight to a different reaction isn't supported, just undo.
+        btn.disabled = !!reacted && !isActive;
+        btn.title = isActive ? 'Click to remove your reaction' : '';
       });
     }
     async function reactToSong(songId, type) {
-      if (localStorage.getItem(`mezmurify_reacted_${songId}`)) return;
+      const reacted = localStorage.getItem(`mezmurify_reacted_${songId}`);
+      const removing = reacted === type;
+      if (reacted && !removing) return;
       try {
         const res = await fetch(`/api/mezmurs/${encodeURIComponent(songId)}/react`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type })
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, remove: removing })
         });
         if (!res.ok) return;
-        localStorage.setItem(`mezmurify_reacted_${songId}`, type);
+        if (removing) localStorage.removeItem(`mezmurify_reacted_${songId}`);
+        else localStorage.setItem(`mezmurify_reacted_${songId}`, type);
         renderEngagement(songId, await res.json());
       } catch (err) { console.error(err); }
     }
