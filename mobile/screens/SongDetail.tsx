@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, StyleSheet, useWindowDimensions, Share, TouchableOpacity, TextInput, Alert, Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -14,6 +15,8 @@ import {
   removeFavorite,
   recordRecentlyViewed,
   exportToDrive,
+  reactToSong,
+  type ReactionType,
 } from '../lib/api';
 import HighlightText from '../components/HighlightText';
 import { colors } from '../theme';
@@ -23,13 +26,13 @@ type Props = NativeStackScreenProps<RootStackParamList, 'SongDetail'>;
 
 const NEW_BADGE_DAYS = 30;
 
-const REACTIONS: { key: 'like_count' | 'love_count' | 'haha_count' | 'wow_count' | 'sad_count' | 'angry_count'; emoji: string; label: string }[] = [
-  { key: 'like_count', emoji: '👍', label: 'Like' },
-  { key: 'love_count', emoji: '❤️', label: 'Love' },
-  { key: 'haha_count', emoji: '😂', label: 'Haha' },
-  { key: 'wow_count', emoji: '😮', label: 'Wow' },
-  { key: 'sad_count', emoji: '😢', label: 'Sad' },
-  { key: 'angry_count', emoji: '😠', label: 'Angry' },
+const REACTIONS: { key: 'like_count' | 'love_count' | 'haha_count' | 'wow_count' | 'sad_count' | 'angry_count'; type: ReactionType; emoji: string; label: string }[] = [
+  { key: 'like_count', type: 'like', emoji: '👍', label: 'Like' },
+  { key: 'love_count', type: 'love', emoji: '❤️', label: 'Love' },
+  { key: 'haha_count', type: 'haha', emoji: '😂', label: 'Haha' },
+  { key: 'wow_count', type: 'wow', emoji: '😮', label: 'Wow' },
+  { key: 'sad_count', type: 'sad', emoji: '😢', label: 'Sad' },
+  { key: 'angry_count', type: 'angry', emoji: '😠', label: 'Angry' },
 ];
 
 export default function SongDetail({ route }: Props) {
@@ -45,6 +48,8 @@ export default function SongDetail({ route }: Props) {
   const [commentsError, setCommentsError] = useState<string | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [reactedType, setReactedType] = useState<ReactionType | null>(null);
+  const [reactionOverrides, setReactionOverrides] = useState<Partial<Record<ReactionType, number>>>({});
   const [commentText, setCommentText] = useState('');
   const [postingComment, setPostingComment] = useState(false);
   const [exportingDrive, setExportingDrive] = useState(false);
@@ -82,6 +87,36 @@ export default function SongDetail({ route }: Props) {
       cancelled = true;
     };
   }, [user, songId]);
+
+  useEffect(() => {
+    setReactionOverrides({});
+    let cancelled = false;
+    AsyncStorage.getItem(`mezmurify_reacted_${songId}`).then(value => {
+      if (!cancelled) setReactedType((value as ReactionType) || null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [songId]);
+
+  // Anonymous, one reaction per song per device - matches the web app's behavior.
+  const handleReact = async (type: ReactionType) => {
+    if (reactedType) return;
+    setReactedType(type);
+    setReactionOverrides(prev => ({ ...prev, [type]: (song?.[`${type}_count` as keyof typeof song] as number ?? 0) + 1 }));
+    try {
+      await reactToSong(songId, type);
+      await AsyncStorage.setItem(`mezmurify_reacted_${songId}`, type);
+    } catch (err) {
+      setReactedType(null);
+      setReactionOverrides(prev => {
+        const next = { ...prev };
+        delete next[type];
+        return next;
+      });
+      Alert.alert('Could not save reaction', err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
 
   const handleToggleFavorite = async () => {
     if (!user) {
@@ -254,10 +289,16 @@ export default function SongDetail({ route }: Props) {
       </View>
       <View style={styles.reactionsRow}>
         {REACTIONS.map(r => (
-          <View key={r.key} style={styles.reactionItem}>
+          <TouchableOpacity
+            key={r.key}
+            style={[styles.reactionItem, reactedType === r.type && styles.reactionItemActive]}
+            onPress={() => handleReact(r.type)}
+            disabled={!!reactedType}
+            accessibilityLabel={r.label}
+          >
             <Text style={styles.reactionEmoji}>{r.emoji}</Text>
-            <Text style={styles.reactionCount}>{song[r.key]}</Text>
-          </View>
+            <Text style={styles.reactionCount}>{reactionOverrides[r.type] ?? song[r.key]}</Text>
+          </TouchableOpacity>
         ))}
       </View>
 
@@ -344,7 +385,8 @@ const styles = StyleSheet.create({
   statsRow: { marginBottom: 8 },
   statsLabel: { fontSize: 14, color: colors.textSecondary },
   reactionsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 24 },
-  reactionItem: { flexDirection: 'row', alignItems: 'center', marginRight: 16, marginBottom: 6 },
+  reactionItem: { flexDirection: 'row', alignItems: 'center', marginRight: 16, marginBottom: 6, borderRadius: 14, paddingHorizontal: 8, paddingVertical: 4 },
+  reactionItemActive: { backgroundColor: colors.accent + '22' },
   reactionEmoji: { fontSize: 16, marginRight: 4 },
   reactionCount: { fontSize: 14, color: colors.textSecondary },
   commentsHeader: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginBottom: 8 },
