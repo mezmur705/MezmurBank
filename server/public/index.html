@@ -278,6 +278,13 @@
   </div>
 
   <script>
+    // The IFrame API script loads asynchronously - window.YT can exist before YT.Player is
+    // actually constructable, so rely on the API's own ready signal rather than checking
+    // window.YT ad-hoc (which can read as "not ready yet" on an early Play All click and
+    // fall back to a plain iframe for the rest of that session).
+    let youtubeApiReady = false;
+    window.onYouTubeIframeAPIReady = function () { youtubeApiReady = true; };
+
     let isAdmin = false;
     let selectedSongId = null;
 
@@ -1288,7 +1295,7 @@ function upcomingSundays() {
         const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube`);
         const data = await res.json();
         if (data.videoId) {
-          if (playQueue && window.YT && window.YT.Player) {
+          if (playQueue && youtubeApiReady) {
             container.innerHTML = '<div id="ytQueuePlayerMount" style="width:100%; height:100%;"></div>';
             ytQueuePlayer = new YT.Player('ytQueuePlayerMount', {
               videoId: data.videoId,
@@ -1296,7 +1303,7 @@ function upcomingSundays() {
               events: { onStateChange: event => { if (event.data === YT.PlayerState.ENDED) advanceQueue(); } }
             });
           } else {
-            container.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.videoId}${playQueue ? '?autoplay=1' : ''}" allowfullscreen></iframe>`;
+            container.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.videoId}${playQueue ? '?autoplay=1' : ''}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
           }
           if (data.confirmed) {
             confirmRow.innerHTML = isAdmin
