@@ -35,11 +35,21 @@ const REACTIONS: { key: 'like_count' | 'love_count' | 'haha_count' | 'wow_count'
   { key: 'angry_count', type: 'angry', emoji: '😠', label: 'Angry' },
 ];
 
-export default function SongDetail({ route, navigation }: Props) {
-  const { songId, query = '', queue, queueIndex = 0 } = route.params;
+export default function SongDetail({ route }: Props) {
+  const { query = '' } = route.params;
   const { songs } = useLibrary();
   const { user, session, promptSignIn } = useAuth();
   const { width } = useWindowDimensions();
+
+  // "Play All" queue state lives locally rather than in route params, so advancing to
+  // the next song swaps videoId on the SAME mounted player instead of navigating to a
+  // fresh screen. A full remount recreates the WebView, which loses the media-engagement
+  // state that let the previous video autoplay - so the next video loaded paused even
+  // with forceAndroidAutoplay. Updating props in place lets the already-playing YouTube
+  // player just keep going, the same way loadVideoById() does on any real playlist.
+  const [songId, setSongId] = useState(route.params.songId);
+  const [queue, setQueue] = useState(route.params.queue);
+  const [queueIndex, setQueueIndex] = useState(route.params.queueIndex ?? 0);
 
   const song = useMemo(() => songs.find(s => s.id === songId), [songs, songId]);
 
@@ -50,14 +60,15 @@ export default function SongDetail({ route, navigation }: Props) {
     for (let nextIndex = queueIndex + 1; nextIndex < queue.length; nextIndex++) {
       const nextSong = songs.find(s => s.id === queue[nextIndex]);
       if (nextSong?.youtube_video_id) {
-        navigation.replace('SongDetail', { songId: queue[nextIndex], query, queue, queueIndex: nextIndex });
+        setSongId(queue[nextIndex]);
+        setQueueIndex(nextIndex);
         return;
       }
     }
     Alert.alert('Playlist finished', 'That was the last song.');
   };
 
-  const stopQueue = () => navigation.replace('SongDetail', { songId, query });
+  const stopQueue = () => setQueue(undefined);
 
   // Defensive: if the current song in the queue has no video (data changed after the
   // queue was built), don't strand the user on a silent screen - skip past it.
