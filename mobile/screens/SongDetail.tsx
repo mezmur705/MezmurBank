@@ -281,6 +281,7 @@ export default function SongDetail({ route, navigation }: Props) {
             height={(width - 32) * 0.5625}
             videoId={song.youtube_video_id}
             play={!!queue}
+            forceAndroidAutoplay
             onChangeState={(state: PLAYER_STATES) => {
               if (state === PLAYER_STATES.ENDED) advanceQueue();
             }}

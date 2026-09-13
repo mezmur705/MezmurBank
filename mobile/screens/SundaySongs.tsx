@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet, Share } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -33,6 +33,15 @@ export default function SundaySongs() {
   const playAll = () => {
     if (!playableIds.length) return;
     navigation.navigate('SongDetail', { songId: playableIds[0], queue: playableIds, queueIndex: 0 });
+  };
+
+  // Links to the web app's own ?sunday= deep link (same format the web "Share" button
+  // copies) - opens straight to this Sunday's list for anyone, app or not.
+  const handleShare = () => {
+    if (!date) return;
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+    if (!apiUrl) return;
+    Share.share({ message: `${apiUrl}/?sunday=${date}`, title: 'Sunday Songs' });
   };
 
   const load = useCallback(() => {
@@ -90,7 +99,14 @@ export default function SundaySongs() {
 
   return (
     <View style={styles.container}>
-      {date ? <Text style={styles.dateHeader}>{formatSundayDate(date)}</Text> : null}
+      {date ? (
+        <View style={styles.dateRow}>
+          <Text style={styles.dateHeader}>{formatSundayDate(date)}</Text>
+          <TouchableOpacity onPress={handleShare} accessibilityLabel="Share this Sunday's songs">
+            <MaterialCommunityIcons name="share-variant" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
       {playableIds.length > 0 ? (
         <TouchableOpacity style={styles.playAllButton} onPress={playAll} activeOpacity={0.7}>
           <MaterialCommunityIcons name="play-circle" size={20} color="#fff" />
@@ -111,7 +127,8 @@ export default function SundaySongs() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, padding: 24 },
-  dateHeader: { fontSize: 14, fontWeight: '600', color: colors.textSecondary, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  dateHeader: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
   playAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
