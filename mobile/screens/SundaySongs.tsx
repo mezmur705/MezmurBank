@@ -35,13 +35,11 @@ export default function SundaySongs() {
     navigation.navigate('SongDetail', { songId: playableIds[0], queue: playableIds, queueIndex: 0 });
   };
 
-  // Links to the web app's own ?sunday= deep link (same format the web "Share" button
-  // copies) - opens straight to this Sunday's list for anyone, app or not.
+  // Uses the app's own mezmurify:// scheme (wired up via the linking config in
+  // App.tsx) so tapping the link opens this screen directly in the mobile app.
   const handleShare = () => {
     if (!date) return;
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-    if (!apiUrl) return;
-    Share.share({ message: `${apiUrl}/?sunday=${date}`, title: 'Sunday Songs' });
+    Share.share({ message: 'mezmurify://sunday', title: 'Sunday Songs' });
   };
 
   const load = useCallback(() => {

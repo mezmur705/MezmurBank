@@ -19,6 +19,15 @@ import SundaySongs from './screens/SundaySongs';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+const linking = {
+  prefixes: ['mezmurify://'],
+  config: {
+    screens: {
+      SundaySongs: 'sunday',
+    },
+  },
+};
+
 const navTheme = {
   ...DarkTheme,
   colors: {
@@ -35,7 +44,7 @@ function RootNavigator() {
   const { signInSheetVisible, dismissSignInSheet } = useAuth();
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer theme={navTheme} linking={linking}>
       <Stack.Navigator
         initialRouteName="SingersList"
         screenOptions={{
