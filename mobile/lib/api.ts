@@ -145,6 +145,22 @@ export async function getDriveExports(): Promise<DriveExport[]> {
   return body;
 }
 
+// Saves a song's YouTube video (accepts a pasted watch/embed/shorts/youtu.be link or a bare
+// 11-char video ID - server-side parsing in extractYoutubeId). TEMPORARILY open to everyone,
+// no sign-in required, matching the same change made to the web app's confirm endpoint.
+export async function confirmYoutubeLink(songId: string, videoIdOrLink: string): Promise<{ videoId: string | null }> {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
+  const response = await fetch(`${apiUrl}/api/mezmurs/${encodeURIComponent(songId)}/youtube/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoId: videoIdOrLink }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body?.error ?? 'Could not save the YouTube link.');
+  return body;
+}
+
 export async function exportToDrive(
   songId: string,
   accessToken: string

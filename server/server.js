@@ -7,6 +7,7 @@ const { getDriveClient } = require('./lib/googleDrive');
 const { buildOpenSongXml } = require('./lib/openSongXml');
 const { buildSlideGroup, buildSetXml } = require('./lib/openSongSet');
 const { buildLyricsAndFormat } = require('./lib/lyricsFormat');
+const { sendNotificationEmail } = require('./lib/mailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -684,26 +685,71 @@ app.get('/api/mezmurs/:id/youtube', async (req, res) => {
   }
 });
 
-// Admin review step: saves a YouTube video as the song's confirmed link, the field everyone
-// else sees. Three ways it can be called:
+// Best-effort caller identity for the notification email below - a real email if signed in,
+// otherwise just the IP. Never throws: an unverifiable/missing token must not block the
+// (now unauthenticated) confirm endpoint itself.
+async function identifyRequester(req) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token) {
+    try {
+      const payload = await verifySupabaseToken(token);
+      if (payload.email) return payload.email;
+    } catch {}
+  }
+  return `anonymous (${req.ip})`;
+}
+
+// Emails the admin inbox whenever a song's YouTube link changes - added because the confirm
+// endpoint below is temporarily open to everyone, not just admins, so this is the only way to
+// notice a bad edit. Fire-and-forget from the route; failures are logged, never surfaced to
+// the caller.
+async function notifyYoutubeLinkChange(req, songId, videoId) {
+  const requester = await identifyRequester(req);
+  const rows = await db`
+    SELECT s.title, sg.name AS singer_name FROM songs s JOIN singers sg ON sg.id = s.singer_id WHERE s.id = ${songId}
+  `;
+  const song = rows[0];
+  // Matches the web app's own songShareLink() format (index.html) - loading this URL jumps
+  // straight to the song via the ?song= query param handling near the bottom of that file.
+  const songLink = `${req.protocol}://${req.get('host')}/?song=${encodeURIComponent(songId)}`;
+  const subject = `YouTube link updated: ${song ? song.title : songId}`;
+  const text = [
+    `Song: ${song ? `${song.title} - ${song.singer_name}` : songId}`,
+    `Link: ${songLink}`,
+    `New video: ${videoId ? `https://www.youtube.com/watch?v=${videoId}` : '(none - marked as no video)'}`,
+    `Updated by: ${requester}`,
+    `Time: ${new Date().toISOString()}`,
+  ].join('\n');
+  await sendNotificationEmail(subject, text);
+}
+
+// Saves a YouTube video as the song's confirmed link, the field everyone else sees. Three
+// ways it can be called:
 //   - no "videoId" key at all: promote the cached auto-search suggestion (plain confirm button)
 //   - "videoId": "<link or id>": save that one directly (picked from the candidates list, or
 //     pasted manually)
-//   - "videoId": "" (present but empty): admin looked and confirmed none of the results is the
-//     right video, or none exists - same "reviewed, nothing found" state the old auto-search
-//     used to write, so it stops nagging for review on every visit.
-app.post('/api/mezmurs/:id/youtube/confirm', requireAdmin, async (req, res) => {
+//   - "videoId": "" (present but empty): reviewer confirmed none of the results is the right
+//     video, or none exists - same "reviewed, nothing found" state the old auto-search used to
+//     write, so it stops nagging for review on every visit.
+// TEMPORARILY open to everyone, no sign-in required (previously requireAdmin) - user asked to
+// open YouTube-link editing to all users for the moment. Restore requireAdmin when done.
+app.post('/api/mezmurs/:id/youtube/confirm', async (req, res) => {
   try {
     if (req.body && 'videoId' in req.body) {
       const raw = (req.body.videoId || '').toString().trim();
       if (!raw) {
         await db`UPDATE songs SET youtube_video_id = '', youtube_suggested_id = '' WHERE id = ${req.params.id}`;
-        return res.json({ videoId: null, confirmed: true });
+        res.json({ videoId: null, confirmed: true });
+        notifyYoutubeLinkChange(req, req.params.id, null).catch(err => console.error('YouTube link email failed:', err));
+        return;
       }
       const manualVideoId = extractYoutubeId(raw);
       if (!manualVideoId) return res.status(400).json({ error: 'Could not recognize that YouTube link/ID' });
       await db`UPDATE songs SET youtube_video_id = ${manualVideoId}, youtube_suggested_id = ${manualVideoId} WHERE id = ${req.params.id}`;
-      return res.json({ videoId: manualVideoId, confirmed: true });
+      res.json({ videoId: manualVideoId, confirmed: true });
+      notifyYoutubeLinkChange(req, req.params.id, manualVideoId).catch(err => console.error('YouTube link email failed:', err));
+      return;
     }
 
     const found = await db`SELECT youtube_suggested_id FROM songs WHERE id = ${req.params.id}`;
@@ -713,15 +759,17 @@ app.post('/api/mezmurs/:id/youtube/confirm', requireAdmin, async (req, res) => {
 
     await db`UPDATE songs SET youtube_video_id = ${suggested} WHERE id = ${req.params.id}`;
     res.json({ videoId: suggested || null, confirmed: true });
+    notifyYoutubeLinkChange(req, req.params.id, suggested || null).catch(err => console.error('YouTube link email failed:', err));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Admin-only: several YouTube search results to pick from, instead of trusting the single
-// auto-search guess. Read-only - doesn't touch youtube_suggested_id or youtube_video_id.
-app.get('/api/mezmurs/:id/youtube/candidates', requireAdmin, async (req, res) => {
+// Several YouTube search results to pick from, instead of trusting the single auto-search
+// guess. Read-only - doesn't touch youtube_suggested_id or youtube_video_id.
+// TEMPORARILY open to everyone, no sign-in required (previously requireAdmin) - see note above.
+app.get('/api/mezmurs/:id/youtube/candidates', async (req, res) => {
   try {
     const found = await db`
       SELECT s.lyrics, sg.name AS singer

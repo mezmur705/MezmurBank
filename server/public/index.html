@@ -1305,30 +1305,24 @@ function upcomingSundays() {
           } else {
             container.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.videoId}${playQueue ? '?autoplay=1' : ''}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
           }
+          // TEMPORARILY open to everyone, not just isAdmin - user asked to open YouTube-link
+          // editing to all users for the moment. Restore the isAdmin gates here when done.
           if (data.confirmed) {
-            confirmRow.innerHTML = isAdmin
-              ? `<div style="color:#276749; font-size:0.85rem; font-weight:600; margin-bottom:6px;">✅ Confirmed</div><button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Wrong video? Choose from list</button>`
-              : `<div style="color:#276749; font-size:0.85rem; font-weight:600;">✅ Confirmed</div>`;
-            if (isAdmin) document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
+            confirmRow.innerHTML = `<div style="color:#276749; font-size:0.85rem; font-weight:600; margin-bottom:6px;">✅ Confirmed</div><button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Wrong video? Choose from list</button>`;
+            document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
           } else {
             const notice = `<div style="color:#975a16; font-size:0.8rem; margin-bottom:6px;">⏳ Not yet confirmed - auto-found match, please review</div>`;
-            confirmRow.innerHTML = isAdmin
-              ? `${notice}<button class="keyboard-btn" id="confirmYoutubeBtn" style="width:100%; justify-content:center; margin-bottom:6px;">✅ Confirm this is the right video</button><button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Choose from list instead</button>`
-              : notice;
-            if (isAdmin) {
-              document.getElementById('confirmYoutubeBtn').onclick = () => confirmYoutubeLink(song, singerName);
-              document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
-            }
+            confirmRow.innerHTML = `${notice}<button class="keyboard-btn" id="confirmYoutubeBtn" style="width:100%; justify-content:center; margin-bottom:6px;">✅ Confirm this is the right video</button><button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Choose from list instead</button>`;
+            document.getElementById('confirmYoutubeBtn').onclick = () => confirmYoutubeLink(song, singerName);
+            document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
           }
           return;
         }
         // Defensive: a queued song should always have a video (startPlayAll pre-filters),
         // but if data changed since the queue was built, skip it instead of stalling.
         if (playQueue) { advanceQueue(); return; }
-        if (isAdmin) {
-          confirmRow.innerHTML = `<button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Search YouTube for this song</button>`;
-          document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
-        }
+        confirmRow.innerHTML = `<button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Search YouTube for this song</button>`;
+        document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
         // No YouTube video found (or not searched yet) - play the MediaUrl in its place, if any.
         container.innerHTML = song.mediaUrl
           ? renderMediaPlayer(song.mediaUrl)

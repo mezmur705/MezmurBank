@@ -16,6 +16,7 @@ import {
   recordRecentlyViewed,
   exportToDrive,
   reactToSong,
+  confirmYoutubeLink,
   type ReactionType,
 } from '../lib/api';
 import HighlightText from '../components/HighlightText';
@@ -87,6 +88,20 @@ export default function SongDetail({ route }: Props) {
   const [commentText, setCommentText] = useState('');
   const [postingComment, setPostingComment] = useState(false);
   const [exportingDrive, setExportingDrive] = useState(false);
+
+  // Local override so a saved link shows immediately without waiting on a full library
+  // refresh (song list is ~3200 rows) - same pattern as reactionOverrides below.
+  // undefined = no override yet, use song.youtube_video_id; null = explicitly cleared.
+  const [pendingVideoId, setPendingVideoId] = useState<string | null | undefined>(undefined);
+  const [showYoutubeInput, setShowYoutubeInput] = useState(false);
+  const [youtubeInput, setYoutubeInput] = useState('');
+  const [savingYoutube, setSavingYoutube] = useState(false);
+
+  useEffect(() => {
+    setPendingVideoId(undefined);
+    setShowYoutubeInput(false);
+    setYoutubeInput('');
+  }, [songId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,6 +238,22 @@ export default function SongDetail({ route }: Props) {
     }
   };
 
+  const handleSaveYoutubeLink = async () => {
+    const raw = youtubeInput.trim();
+    if (!raw) return;
+    setSavingYoutube(true);
+    try {
+      const { videoId } = await confirmYoutubeLink(songId, raw);
+      setPendingVideoId(videoId);
+      setYoutubeInput('');
+      setShowYoutubeInput(false);
+    } catch (err) {
+      Alert.alert('Could not save the YouTube link', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setSavingYoutube(false);
+    }
+  };
+
   if (!song) {
     return (
       <View style={styles.center}>
@@ -231,11 +262,13 @@ export default function SongDetail({ route }: Props) {
     );
   }
 
+  const effectiveVideoId = pendingVideoId !== undefined ? pendingVideoId : song.youtube_video_id;
+
   const handleShare = () => {
     const singerLine = [song.singers?.name, song.singers?.amharic_name].filter(Boolean).join(' • ');
     const openSongIdLine = song.open_song_id != null ? `OpenSong ID: ${song.open_song_id}` : undefined;
-    const youtubeLine = song.youtube_video_id
-      ? `https://www.youtube.com/watch?v=${song.youtube_video_id}`
+    const youtubeLine = effectiveVideoId
+      ? `https://www.youtube.com/watch?v=${effectiveVideoId}`
       : undefined;
     const message = [
       song.title,
@@ -286,11 +319,11 @@ export default function SongDetail({ route }: Props) {
         </View>
       ) : null}
 
-      {song.youtube_video_id ? (
+      {effectiveVideoId ? (
         <View style={styles.playerWrap}>
           <YoutubePlayer
             height={(width - 32) * 0.5625}
-            videoId={song.youtube_video_id}
+            videoId={effectiveVideoId}
             play={!!queue}
             forceAndroidAutoplay
             onChangeState={(state: PLAYER_STATES) => {
@@ -299,6 +332,45 @@ export default function SongDetail({ route }: Props) {
           />
         </View>
       ) : null}
+
+      {showYoutubeInput ? (
+        <View style={styles.youtubeEditRow}>
+          <TextInput
+            style={styles.youtubeEditInput}
+            placeholder="Paste a YouTube link or video ID"
+            placeholderTextColor={colors.textTertiary}
+            value={youtubeInput}
+            onChangeText={setYoutubeInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity
+            onPress={handleSaveYoutubeLink}
+            style={styles.youtubeEditSave}
+            disabled={savingYoutube || !youtubeInput.trim()}
+            accessibilityLabel="Save YouTube link"
+          >
+            {savingYoutube ? (
+              <ActivityIndicator size="small" color={colors.textPrimary} />
+            ) : (
+              <Text style={styles.youtubeEditSaveText}>Save</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => { setShowYoutubeInput(false); setYoutubeInput(''); }}
+            accessibilityLabel="Cancel"
+          >
+            <MaterialIcons name="close" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity onPress={() => setShowYoutubeInput(true)} style={styles.youtubeEditToggle}>
+          <MaterialIcons name="edit" size={13} color={colors.textSecondary} />
+          <Text style={styles.youtubeEditToggleText}>
+            {effectiveVideoId ? 'Wrong video? Paste a different link' : 'Add a YouTube link for this song'}
+          </Text>
+        </TouchableOpacity>
+      )}
 
       <View style={styles.iconRow}>
         <TouchableOpacity
@@ -431,6 +503,27 @@ const styles = StyleSheet.create({
   singer: { fontSize: 15, color: colors.textSecondary, marginTop: 4, marginBottom: 16 },
   sourceCredit: { fontSize: 12, color: colors.textSecondary, marginTop: -12, marginBottom: 16, textDecorationLine: 'underline' },
   playerWrap: { marginBottom: 16, borderRadius: 8, overflow: 'hidden' },
+  youtubeEditToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 },
+  youtubeEditToggleText: { fontSize: 12, color: colors.textSecondary, textDecorationLine: 'underline' },
+  youtubeEditRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  youtubeEditInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    color: colors.textPrimary,
+    fontSize: 14,
+  },
+  youtubeEditSave: {
+    height: 40,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  youtubeEditSaveText: { color: colors.textPrimary, fontWeight: '700', fontSize: 13 },
   queueBar: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 10 },
   queueText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.textSecondary },
   queueAction: { fontSize: 13, fontWeight: '700', color: colors.accent },
