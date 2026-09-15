@@ -29,3 +29,9 @@ Thumbs.db
 
 # Generated data dumps (regenerate via server/db/export-mssql-to-json.js)
 server/db/export/
+
+# Raw import source, already loaded into the DB (see server/import-from-folder.js)
+singers/
+
+# Downloaded Android platform-tools (adb, fastboot, etc.)
+.tools/
