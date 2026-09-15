@@ -1,29 +1,26 @@
-const nodemailer = require('nodemailer');
-
-// Gmail SMTP + App Password - deliberately simpler than the OAuth setup in googleDrive.js,
-// since this is just low-volume notification email, not a user-facing feature. Silently
-// no-ops (logs a warning) if the env vars aren't set, so local/dev setups without mail
-// configured don't crash.
-let transporter;
-function getTransporter() {
-  if (transporter !== undefined) return transporter;
-  transporter = (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD)
-    ? nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
-      })
-    : null;
-  return transporter;
-}
-
+// Resend (HTTPS email API), not SMTP - Render's free plan blocks/throttles raw outbound
+// SMTP to Gmail (confirmed via repeated ETIMEDOUT connecting on port 465/587 in production
+// logs), so this sends over plain HTTPS instead, which isn't blocked. Uses the built-in
+// fetch (same as the YouTube Data API calls in server.js), no extra dependency needed.
+// Silently no-ops (logs a warning) if the env vars aren't set, so local/dev setups without
+// mail configured don't crash.
 async function sendNotificationEmail(subject, text) {
-  const t = getTransporter();
+  const apiKey = process.env.RESEND_API_KEY;
   const to = process.env.NOTIFY_EMAIL_TO;
-  if (!t || !to) {
-    console.warn(`Email notification skipped (GMAIL_USER/GMAIL_APP_PASSWORD/NOTIFY_EMAIL_TO not set): ${subject}`);
+  const from = process.env.NOTIFY_EMAIL_FROM || 'onboarding@resend.dev';
+  if (!apiKey || !to) {
+    console.warn(`Email notification skipped (RESEND_API_KEY/NOTIFY_EMAIL_TO not set): ${subject}`);
     return;
   }
-  await t.sendMail({ from: process.env.GMAIL_USER, to, subject, text });
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to: [to], subject, text }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Resend API error ${res.status}: ${body}`);
+  }
 }
 
 module.exports = { sendNotificationEmail };
