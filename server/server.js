@@ -12,6 +12,12 @@ const { sendNotificationEmail } = require('./lib/mailer');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Render sits behind its own proxy (and Cloudflare in front of that), so without this,
+// req.ip resolves to the proxy's internal address instead of the real caller - trust the
+// X-Forwarded-For chain so req.ip is the actual visitor (used for the YouTube-link-change
+// notification email below; nothing security-sensitive keys off req.ip).
+app.set('trust proxy', true);
+
 const db = postgres(process.env.DATABASE_URL, { ssl: 'require' });
 
 function slugify(str) {
