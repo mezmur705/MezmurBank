@@ -16,11 +16,14 @@ async function sendNotificationEmail(subject, text) {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from, to: [to], subject, text }),
+    // Without this, a hung connection (rather than an outright rejection) would neither
+    // throw nor deliver - the caller's .catch() would just never fire, indistinguishable
+    // from success in the logs. Fail loud instead.
+    signal: AbortSignal.timeout(10000),
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Resend API error ${res.status}: ${body}`);
-  }
+  const body = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`Resend API error ${res.status}: ${body}`);
+  console.log(`Notification email sent via Resend: ${subject} (${body})`);
 }
 
 module.exports = { sendNotificationEmail };
