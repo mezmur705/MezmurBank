@@ -143,6 +143,9 @@
     .youtube-candidate-channel { font-size: 0.75rem; color: #718096; margin-top: 2px; }
     .youtube-manual-row { display: flex; gap: 6px; margin-top: 4px; }
     .youtube-manual-row input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 0.82rem; }
+    .yt-search-link { color: inherit; text-decoration: none; }
+    .yt-search-link:hover { color: #2b6cb0; text-decoration: underline; }
+    .youtube-search-link { display: block; text-align: center; margin-top: 6px; font-size: 0.82rem; color: #2b6cb0; text-decoration: underline; }
     .youtube-no-video-link { text-align: center; color: #718096; font-size: 0.8rem; text-decoration: underline; cursor: pointer; margin-top: 8px; }
     .youtube-no-video-link:hover { color: #4a5568; }
     iframe { width: 100%; height: 100%; border: none; }
@@ -1190,7 +1193,8 @@ function upcomingSundays() {
       const query = document.getElementById('searchAll').value;
       const singerEntry = mezmurData.find(item => item.singer === singerName);
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = `<div class="mobile-back-link" onclick="goHome()">← Back to Singers</div><div class="opensong-id-row"><div style="display:flex; gap:8px; align-items:center; margin-left:auto; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="copy-btn" id="shareSongBtn" title="Copy lyrics, YouTube link, and a link to this song">🔗</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive and add to Sunday Songs">${DRIVE_ICON_SVG}</button><button class="opensong-corner-btn" id="openSongFormatBtn" title="Open in PowerPoint">${POWERPOINT_ICON_SVG}</button><button class="edit-btn-inline" id="editSongBtn" title="Edit">✏️</button><button class="delete-btn-inline" title="Delete" onclick="deleteMezmur('${song.id}')">🗑</button></div></div><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}">${highlightText(song.title, query)}${langBadge(song.language)}${newBadge(song)}</h2><h4 class="singer-line" style="color:#718096; margin-bottom: 15px;">Singer: ${singerName}${amharicName(singerEntry && singerEntry.singerAmharic)}</h4>${song.sourceUrl ? `<p class="comment-hint" style="margin-top:-10px;">Source: <a href="${escapeHtml(song.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(song.sourceName || 'External source')}</a> (CC BY-SA)</p>` : ''}</div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
+      const ytSearchHref = youtubeSearchUrl(song, singerName);
+      middleFrame.innerHTML = `<div class="mobile-back-link" onclick="goHome()">← Back to Singers</div><div class="opensong-id-row"><div style="display:flex; gap:8px; align-items:center; margin-left:auto; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="copy-btn" id="shareSongBtn" title="Copy lyrics, YouTube link, and a link to this song">🔗</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive and add to Sunday Songs">${DRIVE_ICON_SVG}</button><button class="opensong-corner-btn" id="openSongFormatBtn" title="Open in PowerPoint">${POWERPOINT_ICON_SVG}</button><button class="edit-btn-inline" id="editSongBtn" title="Edit">✏️</button><button class="delete-btn-inline" title="Delete" onclick="deleteMezmur('${song.id}')">🗑</button></div></div><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}"><a class="yt-search-link" href="${escapeHtml(ytSearchHref)}" target="_blank" rel="noopener noreferrer" title="Search YouTube for this song &amp; singer">${highlightText(song.title, query)}</a>${langBadge(song.language)}${newBadge(song)}</h2><h4 class="singer-line" style="color:#718096; margin-bottom: 15px;">Singer: <a class="yt-search-link" href="${escapeHtml(ytSearchHref)}" target="_blank" rel="noopener noreferrer" title="Search YouTube for this song &amp; singer">${escapeHtml(singerName)}</a>${amharicName(singerEntry && singerEntry.singerAmharic)}</h4>${song.sourceUrl ? `<p class="comment-hint" style="margin-top:-10px;">Source: <a href="${escapeHtml(song.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(song.sourceName || 'External source')}</a> (CC BY-SA)</p>` : ''}</div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
         <div class="engagement-bar">
           <span class="view-count" id="viewCountLabel">👁 — views</span>
           <div class="reaction-row" id="reactionRow">
@@ -1357,10 +1361,19 @@ function upcomingSundays() {
       }
     }
 
+    // youtube.com search results for "song singer" - opened in a new tab so someone can hunt
+    // for the right video themselves. UnknownSinger is a placeholder bucket, not a real
+    // name, so it's left out of the query.
+    function youtubeSearchUrl(song, singerName) {
+      const singer = singerName && singerName !== 'UnknownSinger' ? singerName : '';
+      return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(`${song.title} ${singer}`.trim());
+    }
+
     // Shown below the candidates list (or instead of it, if the search found nothing) so an
     // admin isn't stuck when the right video isn't in the results at all.
-    function youtubeManualEntryRow() {
+    function youtubeManualEntryRow(song, singerName) {
       return `
+        <a class="youtube-search-link" href="${escapeHtml(youtubeSearchUrl(song, singerName))}" target="_blank" rel="noopener noreferrer">🔗 Search YouTube for this song &amp; singer ↗</a>
         <div class="youtube-manual-row">
           <input type="text" id="ytManualInput" placeholder="Not in the list? Paste a YouTube link or video ID">
           <button class="keyboard-btn" id="ytManualBtn">Add</button>
@@ -1389,7 +1402,7 @@ function upcomingSundays() {
               </div>
             `).join('')
           : '<p class="comment-hint">No YouTube results found.</p>';
-        confirmRow.innerHTML = listHtml + youtubeManualEntryRow();
+        confirmRow.innerHTML = listHtml + youtubeManualEntryRow(song, singerName);
         data.candidates.forEach((c, i) => {
           document.getElementById(`ytCandidate${i}`).onclick = () => confirmYoutubeLink(song, singerName, c.videoId);
         });
