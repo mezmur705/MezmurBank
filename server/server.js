@@ -2,6 +2,9 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const postgres = require('postgres');
+const zlib = require('zlib');
+const { promisify } = require('util');
+const gzipAsync = promisify(zlib.gzip);
 const { requireSupabaseUser, verifySupabaseToken } = require('./lib/supabaseAuth');
 const { getDriveClient } = require('./lib/googleDrive');
 const { buildOpenSongXml } = require('./lib/openSongXml');
@@ -113,15 +116,16 @@ async function upsertSinger(tx, name) {
 
 // The full song list (with lyrics) is ~12 MB, and every web/mobile load used to pull it from
 // Supabase again - enough to blow through the free plan's egress quota. So it's kept in
-// memory as the ready-to-send JSON string and only re-fetched after a write or once the TTL
+// memory as the ready-to-send JSON (plus a pre-gzipped copy - ~12 MB shrinks to a fraction,
+// compressed once here rather than per request) and only re-fetched after a write or once the TTL
 // lapses (the TTL covers the import/maintenance scripts, which write to the DB directly and
 // bypass this server, so it bounds how stale the list can get).
 const MEZMURS_CACHE_TTL_MS = 15 * 60 * 1000;
-let mezmursCache = { json: null, loadedAt: 0, version: 0, pending: null, pendingVersion: 0 };
+let mezmursCache = { entry: null, loadedAt: 0, version: 0, pending: null, pendingVersion: 0 };
 
 function invalidateMezmursCache() {
   mezmursCache.version++;
-  mezmursCache.json = null;
+  mezmursCache.entry = null;
 }
 
 // Any successful write invalidates the cache - except these, which never touch the data
@@ -138,7 +142,7 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-async function loadMezmursJson() {
+async function loadMezmursEntry() {
   // LEFT JOIN (not JOIN) so a singer with no songs yet - e.g. one just added via "Add
   // Singer" - still gets a row and shows up in the app instead of being invisible until
   // their first song is saved.
@@ -150,23 +154,24 @@ async function loadMezmursJson() {
     LEFT JOIN songs s ON s.singer_id = sg.id
     ORDER BY (sg.name = 'UnknownSinger'), sg.name, s.title
   `;
-  return JSON.stringify(rows.map(r => ({ id: r.id, openSongId: r.open_song_id, singerId: r.singer_id, singer: r.singer, singerAmharic: r.singer_amharic, title: r.title, lyrics: r.lyrics, language: r.language, openSongFormat: r.open_song_format, youtubeVideoId: r.youtube_video_id, mediaUrl: r.media_url, sourceName: r.source_name, sourceUrl: r.source_url, createdAt: r.created_at })));
+  const raw = Buffer.from(JSON.stringify(rows.map(r => ({ id: r.id, openSongId: r.open_song_id, singerId: r.singer_id, singer: r.singer, singerAmharic: r.singer_amharic, title: r.title, lyrics: r.lyrics, language: r.language, openSongFormat: r.open_song_format, youtubeVideoId: r.youtube_video_id, mediaUrl: r.media_url, sourceName: r.source_name, sourceUrl: r.source_url, createdAt: r.created_at }))));
+  return { raw, gzip: await gzipAsync(raw) };
 }
 
-async function getMezmursJson() {
+async function getMezmursEntry() {
   const cache = mezmursCache;
-  if (cache.json && Date.now() - cache.loadedAt < MEZMURS_CACHE_TTL_MS) return cache.json;
+  if (cache.entry && Date.now() - cache.loadedAt < MEZMURS_CACHE_TTL_MS) return cache.entry;
   // Concurrent requests during a reload share one query instead of each hitting Supabase.
   // A pending query that started before a write is stale - don't let post-write requests join it.
   if (!cache.pending || cache.pendingVersion !== cache.version) {
     const startVersion = cache.version;
-    const pending = loadMezmursJson().then(json => {
+    const pending = loadMezmursEntry().then(entry => {
       // A write landed while we were querying - serve this result once, but don't keep it.
       if (cache.version === startVersion) {
-        cache.json = json;
+        cache.entry = entry;
         cache.loadedAt = Date.now();
       }
-      return json;
+      return entry;
     }).finally(() => { if (cache.pending === pending) cache.pending = null; });
     cache.pending = pending;
     cache.pendingVersion = startVersion;
@@ -176,7 +181,11 @@ async function getMezmursJson() {
 
 app.get('/api/mezmurs', async (req, res) => {
   try {
-    res.type('application/json').send(await getMezmursJson());
+    const { raw, gzip } = await getMezmursEntry();
+    // Caches/CDNs in front must keep the plain and gzipped variants apart.
+    res.set('Vary', 'Accept-Encoding').type('application/json');
+    if (req.acceptsEncodings('gzip') === 'gzip') res.set('Content-Encoding', 'gzip').send(gzip);
+    else res.send(raw);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
