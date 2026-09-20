@@ -135,12 +135,6 @@
     .singer-avatar-card span { font-size: 0.75rem; color: #2d3748; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
     .right-frame { width: 30%; border-right: none; background: #fafafa; }
     .youtube-container { width: 100%; height: 250px; background: #000; border-radius: 6px; overflow: hidden; margin-top: 10px; }
-    .youtube-candidate { display: flex; gap: 8px; align-items: center; padding: 6px; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 6px; cursor: pointer; background: white; }
-    .youtube-candidate:hover { background: #ebf8ff; border-color: #90cdf4; }
-    .youtube-candidate img { width: 64px; height: 48px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
-    .youtube-candidate-info { min-width: 0; }
-    .youtube-candidate-title { font-size: 0.82rem; font-weight: 600; color: #1a202c; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-    .youtube-candidate-channel { font-size: 0.75rem; color: #718096; margin-top: 2px; }
     .youtube-manual-row { display: flex; gap: 6px; margin-top: 4px; }
     .youtube-manual-row input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 0.82rem; }
     .yt-search-link { color: inherit; text-decoration: none; }
@@ -1294,7 +1288,7 @@ function upcomingSundays() {
       const confirmRow = document.getElementById('youtubeConfirmRow');
       confirmRow.innerHTML = '';
       renderQueueBar();
-      container.innerHTML = '<div style="color:white; text-align:center; padding-top:100px;">Searching YouTube…</div>';
+      container.innerHTML = '<div style="color:white; text-align:center; padding-top:100px;">Loading…</div>';
       try {
         const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube`);
         const data = await res.json();
@@ -1311,22 +1305,14 @@ function upcomingSundays() {
           }
           // TEMPORARILY open to everyone, not just isAdmin - user asked to open YouTube-link
           // editing to all users for the moment. Restore the isAdmin gates here when done.
-          if (data.confirmed) {
-            confirmRow.innerHTML = `<div style="color:#276749; font-size:0.85rem; font-weight:600; margin-bottom:6px;">✅ Confirmed</div><button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Wrong video? Choose from list</button>`;
-            document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
-          } else {
-            const notice = `<div style="color:#975a16; font-size:0.8rem; margin-bottom:6px;">⏳ Not yet confirmed - auto-found match, please review</div>`;
-            confirmRow.innerHTML = `${notice}<button class="keyboard-btn" id="confirmYoutubeBtn" style="width:100%; justify-content:center; margin-bottom:6px;">✅ Confirm this is the right video</button><button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Choose from list instead</button>`;
-            document.getElementById('confirmYoutubeBtn').onclick = () => confirmYoutubeLink(song, singerName);
-            document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
-          }
+          confirmRow.innerHTML = `<div style="color:#276749; font-size:0.85rem; font-weight:600; margin-bottom:6px;">✅ Confirmed</div><button class="keyboard-btn" id="changeYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔗 Wrong video? Paste a different link</button>`;
+          document.getElementById('changeYoutubeBtn').onclick = () => showYoutubeManualEntry(song, singerName);
           return;
         }
         // Defensive: a queued song should always have a video (startPlayAll pre-filters),
         // but if data changed since the queue was built, skip it instead of stalling.
         if (playQueue) { advanceQueue(); return; }
-        confirmRow.innerHTML = `<button class="keyboard-btn" id="chooseYoutubeBtn" style="width:100%; justify-content:center; background:#718096;">🔍 Search YouTube for this song</button>`;
-        document.getElementById('chooseYoutubeBtn').onclick = () => loadYoutubeCandidates(song, singerName);
+        showYoutubeManualEntry(song, singerName);
         // No YouTube video found (or not searched yet) - play the MediaUrl in its place, if any.
         container.innerHTML = song.mediaUrl
           ? renderMediaPlayer(song.mediaUrl)
@@ -1336,20 +1322,14 @@ function upcomingSundays() {
       }
     }
 
-    // Auto-search only caches a suggested match; an admin must confirm it before it's saved
-    // as the song's real YouTube link and shown to everyone else. An explicit videoId (picked
-    // from the candidates list) is saved directly instead of the cached auto-search guess.
+    // Saves the pasted video (or '' for "no video for this song") as the song's YouTube link.
     async function confirmYoutubeLink(song, singerName, videoId) {
-      const btn = document.getElementById('confirmYoutubeBtn');
+      const btn = document.getElementById('ytManualBtn');
       if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
       try {
-        // videoId === undefined (arg omitted): use the cached auto-search suggestion.
-        // videoId === '' (explicitly empty): confirm "no video for this song".
-        // videoId === '<id>': save that one directly.
-        const body = videoId !== undefined ? { videoId } : {};
         const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube/confirm`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify(body)
+          body: JSON.stringify({ videoId })
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Server responded ${res.status}`);
@@ -1357,64 +1337,31 @@ function upcomingSundays() {
         displayLyric(song, singerName);
       } catch (err) {
         alert('Could not save the YouTube link: ' + err.message);
-        if (btn) { btn.disabled = false; btn.textContent = '✅ Confirm this is the right video'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Add'; }
       }
     }
 
-    // youtube.com search results for "song singer" - opened in a new tab so someone can hunt
-    // for the right video themselves. UnknownSinger is a placeholder bucket, not a real
-    // name, so it's left out of the query.
-    function youtubeSearchUrl(song, singerName) {
-      const singer = singerName && singerName !== 'UnknownSinger' ? singerName : '';
-      return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(`${song.title} ${singer}`.trim());
-    }
-
-    // Shown below the candidates list (or instead of it, if the search found nothing) so an
-    // admin isn't stuck when the right video isn't in the results at all.
+    // Shown under the player when a song has no video (or the wrong one): a search link to find
+    // the right video on YouTube, a box to paste its link, and a "no video" opt-out.
     function youtubeManualEntryRow(song, singerName) {
       return `
         <a class="youtube-search-link" href="${escapeHtml(youtubeSearchUrl(song, singerName))}" target="_blank" rel="noopener noreferrer">🔗 Search YouTube for this song &amp; singer ↗</a>
         <div class="youtube-manual-row">
-          <input type="text" id="ytManualInput" placeholder="Not in the list? Paste a YouTube link or video ID">
+          <input type="text" id="ytManualInput" placeholder="Paste a YouTube link or video ID">
           <button class="keyboard-btn" id="ytManualBtn">Add</button>
         </div>
-        <div class="youtube-no-video-link" id="ytNoVideoBtn">None of these - no video for this song</div>
+        <div class="youtube-no-video-link" id="ytNoVideoBtn">No video for this song</div>
       `;
     }
 
-    // Lets an admin pick the right video from several search results instead of trusting
-    // the single top auto-search guess.
-    async function loadYoutubeCandidates(song, singerName) {
-      const confirmRow = document.getElementById('youtubeConfirmRow');
-      confirmRow.innerHTML = '<div class="comment-hint">Searching YouTube…</div>';
-      try {
-        const res = await fetch(`/api/mezmurs/${encodeURIComponent(song.id)}/youtube/candidates`, { headers: authHeaders() });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `Server responded ${res.status}`);
-        const listHtml = data.candidates.length
-          ? data.candidates.map((c, i) => `
-              <div class="youtube-candidate" id="ytCandidate${i}">
-                ${c.thumbnail ? `<img src="${c.thumbnail}" alt="">` : ''}
-                <div class="youtube-candidate-info">
-                  <div class="youtube-candidate-title">${escapeHtml(c.title)}</div>
-                  <div class="youtube-candidate-channel">${escapeHtml(c.channelTitle)}</div>
-                </div>
-              </div>
-            `).join('')
-          : '<p class="comment-hint">No YouTube results found.</p>';
-        confirmRow.innerHTML = listHtml + youtubeManualEntryRow(song, singerName);
-        data.candidates.forEach((c, i) => {
-          document.getElementById(`ytCandidate${i}`).onclick = () => confirmYoutubeLink(song, singerName, c.videoId);
-        });
-        document.getElementById('ytManualBtn').onclick = () => {
-          const input = document.getElementById('ytManualInput').value.trim();
-          if (!input) return;
-          confirmYoutubeLink(song, singerName, input);
-        };
-        document.getElementById('ytNoVideoBtn').onclick = () => confirmYoutubeLink(song, singerName, '');
-      } catch (err) {
-        confirmRow.innerHTML = `<p class="comment-hint">Search failed: ${escapeHtml(err.message)}</p>`;
-      }
+    function showYoutubeManualEntry(song, singerName) {
+      document.getElementById('youtubeConfirmRow').innerHTML = youtubeManualEntryRow(song, singerName);
+      document.getElementById('ytManualBtn').onclick = () => {
+        const input = document.getElementById('ytManualInput').value.trim();
+        if (!input) return;
+        confirmYoutubeLink(song, singerName, input);
+      };
+      document.getElementById('ytNoVideoBtn').onclick = () => confirmYoutubeLink(song, singerName, '');
     }
     // Single search box: matches singer name/Amharic name (pulling in all their songs)
     // OR song title/lyrics, whichever hits first.

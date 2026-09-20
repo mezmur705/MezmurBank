@@ -724,28 +724,11 @@ app.get('/api/mezmurs/:id/youtube', async (req, res) => {
       return res.json({ videoId: song.youtube_video_id || null, configured: true, confirmed: true });
     }
 
-    // Already have a cached auto-search suggestion awaiting admin confirmation - don't re-search.
-    if (song.youtube_suggested_id !== null) {
-      return res.json({ videoId: song.youtube_suggested_id || null, configured: true, confirmed: false });
-    }
-
-    if (!process.env.YOUTUBE_API_KEY) {
-      return res.json({ videoId: null, configured: false, confirmed: false });
-    }
-
-    const query = `${song.singer} ${firstLyricLines(song.lyrics, 3)}`;
-    const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(query)}&key=${process.env.YOUTUBE_API_KEY}`;
-    const ytRes = await fetch(apiUrl);
-    const ytData = await ytRes.json();
-    if (!ytRes.ok) {
-      console.error('YouTube API error:', ytData.error?.message || ytRes.status);
-      return res.json({ videoId: null, configured: true, confirmed: false, error: ytData.error?.message });
-    }
-    const videoId = ytData.items?.[0]?.id?.videoId || '';
-
-    await db`UPDATE songs SET youtube_suggested_id = ${videoId} WHERE id = ${req.params.id}`;
-
-    res.json({ videoId: videoId || null, configured: true, confirmed: false });
+    // No automatic YouTube search: opening a song must not query YouTube (it burned API quota
+    // and showed unreviewed guesses in the player). Only a confirmed video is returned; any
+    // earlier unconfirmed auto-found suggestion (youtube_suggested_id) is kept in the DB but
+    // no longer shown. Finding the right video is manual (the web app links to a YouTube search).
+    res.json({ videoId: null, configured: !!process.env.YOUTUBE_API_KEY, confirmed: false });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -794,8 +777,7 @@ async function notifyYoutubeLinkChange(req, songId, videoId) {
 // Saves a YouTube video as the song's confirmed link, the field everyone else sees. Three
 // ways it can be called:
 //   - no "videoId" key at all: promote the cached auto-search suggestion (plain confirm button)
-//   - "videoId": "<link or id>": save that one directly (picked from the candidates list, or
-//     pasted manually)
+//   - "videoId": "<link or id>": save that one directly (pasted by the user)
 //   - "videoId": "" (present but empty): reviewer confirmed none of the results is the right
 //     video, or none exists - same "reviewed, nothing found" state the old auto-search used to
 //     write, so it stops nagging for review on every visit.
@@ -827,44 +809,6 @@ app.post('/api/mezmurs/:id/youtube/confirm', async (req, res) => {
     await db`UPDATE songs SET youtube_video_id = ${suggested} WHERE id = ${req.params.id}`;
     res.json({ videoId: suggested || null, confirmed: true });
     notifyYoutubeLinkChange(req, req.params.id, suggested || null).catch(err => console.error('YouTube link email failed:', err));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Several YouTube search results to pick from, instead of trusting the single auto-search
-// guess. Read-only - doesn't touch youtube_suggested_id or youtube_video_id.
-// TEMPORARILY open to everyone, no sign-in required (previously requireAdmin) - see note above.
-app.get('/api/mezmurs/:id/youtube/candidates', async (req, res) => {
-  try {
-    const found = await db`
-      SELECT s.lyrics, sg.name AS singer
-      FROM songs s
-      JOIN singers sg ON s.singer_id = sg.id
-      WHERE s.id = ${req.params.id}
-    `;
-    if (!found.length) return res.status(404).json({ error: 'Song not found' });
-    if (!process.env.YOUTUBE_API_KEY) return res.json({ candidates: [] });
-
-    const song = found[0];
-    const query = `${song.singer} ${firstLyricLines(song.lyrics, 3)}`;
-    const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=6&q=${encodeURIComponent(query)}&key=${process.env.YOUTUBE_API_KEY}`;
-    const ytRes = await fetch(apiUrl);
-    const ytData = await ytRes.json();
-    if (!ytRes.ok) {
-      console.error('YouTube API error:', ytData.error?.message || ytRes.status);
-      return res.status(502).json({ error: ytData.error?.message || 'YouTube search failed' });
-    }
-    const candidates = (ytData.items || [])
-      .filter(item => item.id?.videoId)
-      .map(item => ({
-        videoId: item.id.videoId,
-        title: item.snippet.title,
-        channelTitle: item.snippet.channelTitle,
-        thumbnail: item.snippet.thumbnails?.default?.url || null,
-      }));
-    res.json({ candidates });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
