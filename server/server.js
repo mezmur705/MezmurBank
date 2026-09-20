@@ -111,20 +111,72 @@ async function upsertSinger(tx, name) {
   return rows[0].id;
 }
 
+// The full song list (with lyrics) is ~12 MB, and every web/mobile load used to pull it from
+// Supabase again - enough to blow through the free plan's egress quota. So it's kept in
+// memory as the ready-to-send JSON string and only re-fetched after a write or once the TTL
+// lapses (the TTL covers the import/maintenance scripts, which write to the DB directly and
+// bypass this server, so it bounds how stale the list can get).
+const MEZMURS_CACHE_TTL_MS = 15 * 60 * 1000;
+let mezmursCache = { json: null, loadedAt: 0, version: 0, pending: null, pendingVersion: 0 };
+
+function invalidateMezmursCache() {
+  mezmursCache.version++;
+  mezmursCache.json = null;
+}
+
+// Any successful write invalidates the cache - except these, which never touch the data
+// /api/mezmurs returns and happen constantly (invalidating on them would defeat the cache).
+const NON_INVALIDATING_WRITES = /^\/mezmurs\/[^/]+\/(view|react|comments)$/;
+app.use('/api', (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && !NON_INVALIDATING_WRITES.test(req.path)) {
+    // On 'finish' (not up front) so a concurrent read can't re-cache the pre-write data
+    // after we've cleared it.
+    // Only on success: a rejected write (401/400...) changed nothing, and unauthenticated
+    // callers must not be able to keep busting the cache by spamming failing requests.
+    res.on('finish', () => { if (res.statusCode < 400) invalidateMezmursCache(); });
+  }
+  next();
+});
+
+async function loadMezmursJson() {
+  // LEFT JOIN (not JOIN) so a singer with no songs yet - e.g. one just added via "Add
+  // Singer" - still gets a row and shows up in the app instead of being invisible until
+  // their first song is saved.
+  const rows = await db`
+    SELECT sg.id AS singer_id, sg.name AS singer, sg.amharic_name AS singer_amharic,
+           s.id, s.open_song_id, s.title, s.lyrics, s.language, s.open_song_format,
+           s.youtube_video_id, s.media_url, s.source_name, s.source_url, s.created_at
+    FROM singers sg
+    LEFT JOIN songs s ON s.singer_id = sg.id
+    ORDER BY (sg.name = 'UnknownSinger'), sg.name, s.title
+  `;
+  return JSON.stringify(rows.map(r => ({ id: r.id, openSongId: r.open_song_id, singerId: r.singer_id, singer: r.singer, singerAmharic: r.singer_amharic, title: r.title, lyrics: r.lyrics, language: r.language, openSongFormat: r.open_song_format, youtubeVideoId: r.youtube_video_id, mediaUrl: r.media_url, sourceName: r.source_name, sourceUrl: r.source_url, createdAt: r.created_at })));
+}
+
+async function getMezmursJson() {
+  const cache = mezmursCache;
+  if (cache.json && Date.now() - cache.loadedAt < MEZMURS_CACHE_TTL_MS) return cache.json;
+  // Concurrent requests during a reload share one query instead of each hitting Supabase.
+  // A pending query that started before a write is stale - don't let post-write requests join it.
+  if (!cache.pending || cache.pendingVersion !== cache.version) {
+    const startVersion = cache.version;
+    const pending = loadMezmursJson().then(json => {
+      // A write landed while we were querying - serve this result once, but don't keep it.
+      if (cache.version === startVersion) {
+        cache.json = json;
+        cache.loadedAt = Date.now();
+      }
+      return json;
+    }).finally(() => { if (cache.pending === pending) cache.pending = null; });
+    cache.pending = pending;
+    cache.pendingVersion = startVersion;
+  }
+  return cache.pending;
+}
+
 app.get('/api/mezmurs', async (req, res) => {
   try {
-    // LEFT JOIN (not JOIN) so a singer with no songs yet - e.g. one just added via "Add
-    // Singer" - still gets a row and shows up in the app instead of being invisible until
-    // their first song is saved.
-    const rows = await db`
-      SELECT sg.id AS singer_id, sg.name AS singer, sg.amharic_name AS singer_amharic,
-             s.id, s.open_song_id, s.title, s.lyrics, s.language, s.open_song_format,
-             s.youtube_video_id, s.media_url, s.source_name, s.source_url, s.created_at
-      FROM singers sg
-      LEFT JOIN songs s ON s.singer_id = sg.id
-      ORDER BY (sg.name = 'UnknownSinger'), sg.name, s.title
-    `;
-    res.json(rows.map(r => ({ id: r.id, openSongId: r.open_song_id, singerId: r.singer_id, singer: r.singer, singerAmharic: r.singer_amharic, title: r.title, lyrics: r.lyrics, language: r.language, openSongFormat: r.open_song_format, youtubeVideoId: r.youtube_video_id, mediaUrl: r.media_url, sourceName: r.source_name, sourceUrl: r.source_url, createdAt: r.created_at })));
+    res.type('application/json').send(await getMezmursJson());
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
