@@ -1341,6 +1341,14 @@ function upcomingSundays() {
       }
     }
 
+    // youtube.com search results for "song singer" - opened in a new tab so someone can hunt
+    // for the right video themselves. UnknownSinger is a placeholder bucket, not a real
+    // name, so it's left out of the query.
+    function youtubeSearchUrl(song, singerName) {
+      const singer = singerName && singerName !== 'UnknownSinger' ? singerName : '';
+      return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(`${song.title} ${singer}`.trim());
+    }
+
     // Shown under the player when a song has no video (or the wrong one): a search link to find
     // the right video on YouTube, a box to paste its link, and a "no video" opt-out.
     function youtubeManualEntryRow(song, singerName) {
