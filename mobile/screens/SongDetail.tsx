@@ -26,6 +26,11 @@ import type { Comment } from '../types/models';
 type Props = NativeStackScreenProps<RootStackParamList, 'SongDetail'>;
 
 const NEW_BADGE_DAYS = 30;
+const LYRICS_FONT_SIZE_KEY = 'mezmurify_lyrics_font_size';
+const LYRICS_FONT_SIZE_DEFAULT = 16;
+const LYRICS_FONT_SIZE_MIN = 12;
+const LYRICS_FONT_SIZE_MAX = 28;
+const LYRICS_FONT_SIZE_STEP = 2;
 
 const REACTIONS: { key: 'like_count' | 'love_count' | 'haha_count' | 'wow_count' | 'sad_count' | 'angry_count'; type: ReactionType; emoji: string; label: string }[] = [
   { key: 'like_count', type: 'like', emoji: '👍', label: 'Like' },
@@ -96,6 +101,23 @@ export default function SongDetail({ route }: Props) {
   const [showYoutubeInput, setShowYoutubeInput] = useState(false);
   const [youtubeInput, setYoutubeInput] = useState('');
   const [savingYoutube, setSavingYoutube] = useState(false);
+  const [lyricsFontSize, setLyricsFontSize] = useState(LYRICS_FONT_SIZE_DEFAULT);
+
+  // Loaded once (not per-song) since it's a reading preference, not per-song state.
+  useEffect(() => {
+    AsyncStorage.getItem(LYRICS_FONT_SIZE_KEY).then(value => {
+      const parsed = value ? parseInt(value, 10) : NaN;
+      if (!Number.isNaN(parsed)) setLyricsFontSize(parsed);
+    });
+  }, []);
+
+  const adjustLyricsFontSize = (delta: number) => {
+    setLyricsFontSize(prev => {
+      const next = Math.min(LYRICS_FONT_SIZE_MAX, Math.max(LYRICS_FONT_SIZE_MIN, prev + delta));
+      AsyncStorage.setItem(LYRICS_FONT_SIZE_KEY, String(next)).catch(() => {});
+      return next;
+    });
+  };
 
   useEffect(() => {
     setPendingVideoId(undefined);
@@ -407,10 +429,32 @@ export default function SongDetail({ route }: Props) {
       </View>
 
       <View style={styles.lyricsCard}>
-        {song.open_song_id != null ? (
-          <Text style={styles.openSongId}>OpenSong ID: {song.open_song_id}</Text>
-        ) : null}
-        <HighlightText text={song.lyrics} query={query} style={styles.lyrics} />
+        <View style={styles.lyricsHeaderRow}>
+          {song.open_song_id != null ? (
+            <Text style={styles.openSongId}>OpenSong ID: {song.open_song_id}</Text>
+          ) : (
+            <View />
+          )}
+          <View style={styles.fontSizeControls}>
+            <TouchableOpacity
+              onPress={() => adjustLyricsFontSize(-LYRICS_FONT_SIZE_STEP)}
+              style={styles.fontSizeButton}
+              disabled={lyricsFontSize <= LYRICS_FONT_SIZE_MIN}
+              accessibilityLabel="Decrease lyrics text size"
+            >
+              <Text style={[styles.fontSizeButtonText, lyricsFontSize <= LYRICS_FONT_SIZE_MIN && styles.fontSizeButtonTextDisabled]}>A-</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => adjustLyricsFontSize(LYRICS_FONT_SIZE_STEP)}
+              style={styles.fontSizeButton}
+              disabled={lyricsFontSize >= LYRICS_FONT_SIZE_MAX}
+              accessibilityLabel="Increase lyrics text size"
+            >
+              <Text style={[styles.fontSizeButtonText, lyricsFontSize >= LYRICS_FONT_SIZE_MAX && styles.fontSizeButtonTextDisabled]}>A+</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <HighlightText text={song.lyrics} query={query} style={[styles.lyrics, { fontSize: lyricsFontSize, lineHeight: lyricsFontSize * 1.6 }]} />
       </View>
 
       <View style={styles.statsRow}>
@@ -534,7 +578,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   lyrics: { fontSize: 16, lineHeight: 26, color: colors.textPrimary },
-  openSongId: { fontSize: 12, color: colors.textTertiary, marginBottom: 8 },
+  lyricsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  openSongId: { fontSize: 12, color: colors.textTertiary },
+  fontSizeControls: { flexDirection: 'row', gap: 8 },
+  fontSizeButton: {
+    width: 32,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fontSizeButtonText: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  fontSizeButtonTextDisabled: { color: colors.textTertiary },
   statsRow: { marginBottom: 8 },
   statsLabel: { fontSize: 14, color: colors.textSecondary },
   reactionsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 24 },
