@@ -1395,10 +1395,14 @@ function upcomingSundays() {
       document.querySelectorAll('.youtube-candidate-btn').forEach(btn => {
         btn.onclick = () => confirmYoutubeLink(song, singerName, btn.dataset.videoId);
       });
-      document.getElementById('ytManualBtn').onclick = () => {
+      const submitManualLink = () => {
         const input = document.getElementById('ytManualInput').value.trim();
         if (!input) return;
         confirmYoutubeLink(song, singerName, input);
+      };
+      document.getElementById('ytManualBtn').onclick = submitManualLink;
+      document.getElementById('ytManualInput').onkeydown = e => {
+        if (e.key === 'Enter') submitManualLink();
       };
       document.getElementById('ytNoVideoBtn').onclick = () => confirmYoutubeLink(song, singerName, '');
     }

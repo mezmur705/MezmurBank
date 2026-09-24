@@ -365,6 +365,10 @@ export default function SongDetail({ route }: Props) {
             onChangeText={setYoutubeInput}
             autoCapitalize="none"
             autoCorrect={false}
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              if (youtubeInput.trim() && !savingYoutube) handleSaveYoutubeLink();
+            }}
           />
           <TouchableOpacity
             onPress={handleSaveYoutubeLink}
