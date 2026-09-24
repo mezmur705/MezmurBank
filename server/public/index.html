@@ -142,6 +142,13 @@
     .youtube-search-link { display: block; text-align: center; margin-top: 6px; font-size: 0.82rem; color: #2b6cb0; text-decoration: underline; }
     .youtube-no-video-link { text-align: center; color: #718096; font-size: 0.8rem; text-decoration: underline; cursor: pointer; margin-top: 8px; }
     .youtube-no-video-link:hover { color: #4a5568; }
+    .youtube-candidates-label { font-size: 0.78rem; color: #718096; font-weight: 600; margin-top: 8px; margin-bottom: 4px; }
+    .youtube-candidate { display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 6px; background: white; }
+    .youtube-candidate-thumb { width: 44px; height: 33px; border-radius: 4px; object-fit: cover; background: #edf2f7; flex-shrink: 0; }
+    .youtube-candidate-info { flex: 1; min-width: 0; }
+    .youtube-candidate-title { font-size: 0.78rem; font-weight: 600; color: #2d3748; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .youtube-candidate-channel { font-size: 0.72rem; color: #718096; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .youtube-candidate-btn { flex-shrink: 0; font-size: 0.75rem; padding: 5px 8px; }
     iframe { width: 100%; height: 100%; border: none; }
     .opensong-panel { margin-top: 15px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; max-height: 400px; overflow-y: auto; }
     .opensong-panel h4 { margin: 0 0 8px 0; color: #2b6cb0; }
@@ -1312,7 +1319,7 @@ function upcomingSundays() {
         // Defensive: a queued song should always have a video (startPlayAll pre-filters),
         // but if data changed since the queue was built, skip it instead of stalling.
         if (playQueue) { advanceQueue(); return; }
-        showYoutubeManualEntry(song, singerName);
+        showYoutubeManualEntry(song, singerName, data.candidates);
         // No YouTube video found (or not searched yet) - play the MediaUrl in its place, if any.
         container.innerHTML = song.mediaUrl
           ? renderMediaPlayer(song.mediaUrl)
@@ -1349,8 +1356,28 @@ function upcomingSundays() {
       return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(`${song.title} ${singer}`.trim());
     }
 
-    // Shown under the player when a song has no video (or the wrong one): a search link to find
-    // the right video on YouTube, a box to paste its link, and a "no video" opt-out.
+    // Up to 2 auto-search results (by song title + singer name), cached server-side after the
+    // first search so re-opening the song doesn't burn the YouTube API quota again. Each has a
+    // "Use this" button that confirms it directly, same as pasting its link would.
+    function youtubeCandidatesRow(candidates) {
+      return `
+        <div class="youtube-candidates-label">Possible matches:</div>
+        ${candidates.map(c => `
+          <div class="youtube-candidate">
+            ${c.thumbnail ? `<img class="youtube-candidate-thumb" src="${escapeHtml(c.thumbnail)}" alt="">` : '<div class="youtube-candidate-thumb"></div>'}
+            <div class="youtube-candidate-info">
+              <div class="youtube-candidate-title">${escapeHtml(c.title)}</div>
+              <div class="youtube-candidate-channel">${escapeHtml(c.channelTitle)}</div>
+            </div>
+            <button class="keyboard-btn youtube-candidate-btn" data-video-id="${escapeHtml(c.videoId)}">Use this</button>
+          </div>
+        `).join('')}
+      `;
+    }
+
+    // Shown under the player when a song has no video (or the wrong one): any auto-search
+    // candidates to pick from, a search link to find the right video on YouTube, a box to
+    // paste its link, and a "no video" opt-out.
     function youtubeManualEntryRow(song, singerName) {
       return `
         <a class="youtube-search-link" href="${escapeHtml(youtubeSearchUrl(song, singerName))}" target="_blank" rel="noopener noreferrer">🔗 Search YouTube for this song &amp; singer ↗</a>
@@ -1362,8 +1389,12 @@ function upcomingSundays() {
       `;
     }
 
-    function showYoutubeManualEntry(song, singerName) {
-      document.getElementById('youtubeConfirmRow').innerHTML = youtubeManualEntryRow(song, singerName);
+    function showYoutubeManualEntry(song, singerName, candidates) {
+      const candidatesHtml = candidates && candidates.length ? youtubeCandidatesRow(candidates) : '';
+      document.getElementById('youtubeConfirmRow').innerHTML = candidatesHtml + youtubeManualEntryRow(song, singerName);
+      document.querySelectorAll('.youtube-candidate-btn').forEach(btn => {
+        btn.onclick = () => confirmYoutubeLink(song, singerName, btn.dataset.videoId);
+      });
       document.getElementById('ytManualBtn').onclick = () => {
         const input = document.getElementById('ytManualInput').value.trim();
         if (!input) return;

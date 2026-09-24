@@ -314,7 +314,8 @@ app.put('/api/mezmurs/:id', requireAdmin, async (req, res) => {
 
     await db`
       UPDATE songs SET singer_id = ${finalSingerId}, title = ${title}, lyrics = ${lyrics}, language = ${finalLanguage},
-        open_song_format = ${openSongFormat}, youtube_video_id = ${youtubeVideoId}, media_url = ${mediaUrl}
+        open_song_format = ${openSongFormat}, youtube_video_id = ${youtubeVideoId}, media_url = ${mediaUrl},
+        youtube_candidates = NULL
       WHERE id = ${req.params.id}
     `;
     res.json({ ok: true });
@@ -711,7 +712,7 @@ app.delete('/api/sunday-songs/:songId', requireAdmin, async (req, res) => {
 app.get('/api/mezmurs/:id/youtube', async (req, res) => {
   try {
     const found = await db`
-      SELECT s.title, s.lyrics, s.youtube_video_id, s.youtube_suggested_id, sg.name AS singer
+      SELECT s.title, s.youtube_video_id, s.youtube_candidates, sg.name AS singer
       FROM songs s
       JOIN singers sg ON s.singer_id = sg.id
       WHERE s.id = ${req.params.id}
@@ -721,14 +722,38 @@ app.get('/api/mezmurs/:id/youtube', async (req, res) => {
 
     // Already admin-confirmed (empty string means "searched, nothing found" - don't retry).
     if (song.youtube_video_id !== null) {
-      return res.json({ videoId: song.youtube_video_id || null, configured: true, confirmed: true });
+      return res.json({ videoId: song.youtube_video_id || null, candidates: [], configured: true, confirmed: true });
     }
 
-    // No automatic YouTube search: opening a song must not query YouTube (it burned API quota
-    // and showed unreviewed guesses in the player). Only a confirmed video is returned; any
-    // earlier unconfirmed auto-found suggestion (youtube_suggested_id) is kept in the DB but
-    // no longer shown. Finding the right video is manual (the web app links to a YouTube search).
-    res.json({ videoId: null, configured: !!process.env.YOUTUBE_API_KEY, confirmed: false });
+    // Already searched before (cached on first open) - don't burn quota searching again.
+    if (song.youtube_candidates !== null) {
+      return res.json({ videoId: null, candidates: song.youtube_candidates, configured: true, confirmed: false });
+    }
+
+    if (!process.env.YOUTUBE_API_KEY) {
+      return res.json({ videoId: null, candidates: [], configured: false, confirmed: false });
+    }
+
+    const query = `${song.title} ${song.singer}`;
+    const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=2&q=${encodeURIComponent(query)}&key=${process.env.YOUTUBE_API_KEY}`;
+    const ytRes = await fetch(apiUrl);
+    const ytData = await ytRes.json();
+    if (!ytRes.ok) {
+      console.error('YouTube API error:', ytData.error?.message || ytRes.status);
+      return res.json({ videoId: null, candidates: [], configured: true, confirmed: false, error: ytData.error?.message });
+    }
+    const candidates = (ytData.items || [])
+      .filter(item => item.id?.videoId)
+      .map(item => ({
+        videoId: item.id.videoId,
+        title: item.snippet.title,
+        channelTitle: item.snippet.channelTitle,
+        thumbnail: item.snippet.thumbnails?.default?.url || null,
+      }));
+
+    await db`UPDATE songs SET youtube_candidates = ${JSON.stringify(candidates)} WHERE id = ${req.params.id}`;
+
+    res.json({ videoId: null, candidates, configured: true, confirmed: false });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

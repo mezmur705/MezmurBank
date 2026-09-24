@@ -53,6 +53,11 @@ alter table public.songs alter column created_at set default now();
 -- into youtube_video_id) before it's treated as the song's real video and shown to everyone.
 alter table public.songs add column if not exists youtube_suggested_id varchar(20);
 
+-- Cache for the (title + singer) auto-search's top 2 results, so a song with no confirmed
+-- video is only ever searched once (not on every page load) - the search burns the YouTube
+-- API's daily quota. Null = never searched yet; '[]' = searched, nothing found.
+alter table public.songs add column if not exists youtube_candidates jsonb;
+
 create table if not exists public.profiles (
     id uuid primary key references auth.users(id) on delete cascade,
     display_name text,
