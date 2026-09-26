@@ -152,7 +152,7 @@ async function loadMezmursEntry() {
            s.youtube_video_id, s.media_url, s.source_name, s.source_url, s.created_at
     FROM singers sg
     LEFT JOIN songs s ON s.singer_id = sg.id
-    ORDER BY (sg.name = 'UnknownSinger'), sg.name, s.title
+    ORDER BY (sg.name = 'main'), sg.name, s.title
   `;
   const raw = Buffer.from(JSON.stringify(rows.map(r => ({ id: r.id, openSongId: r.open_song_id, singerId: r.singer_id, singer: r.singer, singerAmharic: r.singer_amharic, title: r.title, lyrics: r.lyrics, language: r.language, openSongFormat: r.open_song_format, youtubeVideoId: r.youtube_video_id, mediaUrl: r.media_url, sourceName: r.source_name, sourceUrl: r.source_url, createdAt: r.created_at }))));
   return { raw, gzip: await gzipAsync(raw) };
@@ -247,7 +247,7 @@ app.post('/api/mezmurs', requireAdmin, async (req, res) => {
 
 app.get('/api/singers', async (req, res) => {
   try {
-    const rows = await db`SELECT id, name, amharic_name FROM singers ORDER BY (name = 'UnknownSinger'), name`;
+    const rows = await db`SELECT id, name, amharic_name FROM singers ORDER BY (name = 'main'), name`;
     res.json(rows.map(r => ({ id: r.id, name: r.name, amharicName: r.amharic_name })));
   } catch (err) {
     console.error(err);

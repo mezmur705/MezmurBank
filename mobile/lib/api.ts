@@ -1,10 +1,16 @@
 import { supabase } from './supabase';
 import type { Singer, SongWithSinger, Comment } from '../types/models';
 
+// 'main' is a catch-all bucket for songs whose real singer isn't identified - pushed to the
+// end of the list (matching the web app) instead of sorting alphabetically with everyone else.
 export async function getSingers(): Promise<Singer[]> {
   const { data, error } = await supabase.from('singers').select('*').order('name');
   if (error) throw error;
-  return data ?? [];
+  const singers = data ?? [];
+  const mainIndex = singers.findIndex(s => s.name === 'main');
+  if (mainIndex === -1) return singers;
+  const [main] = singers.splice(mainIndex, 1);
+  return [...singers, main];
 }
 
 const PAGE_SIZE = 1000;

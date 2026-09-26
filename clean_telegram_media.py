@@ -7,7 +7,7 @@ from pathlib import Path
 
 DEFAULT_SOURCE = Path(r"H:\My Drive\backup\Telegram\lyrics")
 DEFAULT_DESTINATION = Path(r"H:\My Drive\backup\Telegram\lyrics_clean")
-UNKNOWN_SINGER = "UnknownSinger"
+UNKNOWN_SINGER = "main"
 
 FIDEL = {
     "ሀ": "he", "ሁ": "hu", "ሂ": "hi", "ሃ": "ha", "ሄ": "he", "ህ": "h", "ሆ": "ho",

@@ -3,7 +3,7 @@
 
 This export used at least half a dozen different header conventions across the years - there
 is no single reliable pattern. extract_singer_title() tries several, in order of confidence,
-and falls back to "UnknownSinger" (matching clean_telegram_media.py's existing convention) with
+and falls back to "main" (matching clean_telegram_media.py's existing convention) with
 the raw header text as the title when nothing recognizable matches. Originals are left untouched;
 this only ever writes into the new destination tree.
 
@@ -18,7 +18,7 @@ from pathlib import Path
 DEFAULT_SOURCE = Path(r"H:\My Drive\backup\Telegram\lyrics_manual_import\songs")
 DEFAULT_DESTINATION = Path(r"H:\My Drive\backup\Telegram\lyrics_manual_import_songs")
 
-UNKNOWN_SINGER = "UnknownSinger"
+UNKNOWN_SINGER = "main"
 ETHIOPIC_RE = re.compile(r'[ሀ-፿ᎀ-᎟ⶀ-⷟꬀-꬯]')
 URL_RE = re.compile(r'\(?https?://\S+\)?')
 MEZMUR_LYRICS_PREFIX_RE = re.compile(r'^(?:Mezmur\s*(?:🎼)?\s*Lyrics|<unknown>)\s*[–-]\s*(.+)$', re.I)
