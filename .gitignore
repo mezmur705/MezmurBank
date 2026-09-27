@@ -6,6 +6,7 @@ server/google-oauth-client.json
 server/google-oauth-token.json
 server/google-oauth-client-export.json
 server/google-oauth-token-export.json
+server/youtube-tools/google-oauth-token-youtube.json
 ReadMezmur.session
 
 # Logs
