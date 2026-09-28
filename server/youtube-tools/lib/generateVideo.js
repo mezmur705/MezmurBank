@@ -72,6 +72,11 @@ async function buildTitleCardPng(title, singer, outPath) {
     .toFile(outPath);
 }
 
+// Bad/corrupted source audio (common with forwarded Telegram files) can make ffmpeg's parser
+// spin retrying for many minutes instead of failing quickly - a hard timeout turns that into a
+// fast, clearly-logged failure instead of silently stalling a whole batch on one bad file.
+const FFMPEG_TIMEOUT_MS = 90 * 1000;
+
 function muxImageAndAudio(imagePath, audioPath, outputPath) {
   return new Promise((resolve, reject) => {
     execFile(ffmpegPath, [
@@ -86,8 +91,11 @@ function muxImageAndAudio(imagePath, audioPath, outputPath) {
       '-pix_fmt', 'yuv420p',
       '-shortest',
       outputPath,
-    ], (err, stdout, stderr) => {
-      if (err) return reject(new Error(`ffmpeg failed: ${err.message}\n${stderr}`));
+    ], { timeout: FFMPEG_TIMEOUT_MS, killSignal: 'SIGKILL' }, (err, stdout, stderr) => {
+      if (err) {
+        const reason = err.killed ? `timed out after ${FFMPEG_TIMEOUT_MS / 1000}s (likely corrupted source audio)` : err.message;
+        return reject(new Error(`ffmpeg failed: ${reason}\n${stderr.slice(-1500)}`));
+      }
       resolve(outputPath);
     });
   });
