@@ -27,7 +27,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'SongDetail'>;
 
 const NEW_BADGE_DAYS = 30;
 const LYRICS_FONT_SIZE_KEY = 'mezmurify_lyrics_font_size';
-const LYRICS_FONT_SIZE_DEFAULT = 16;
+const LYRICS_FONT_SIZE_DEFAULT = 20;
 const LYRICS_FONT_SIZE_MIN = 12;
 const LYRICS_FONT_SIZE_MAX = 28;
 const LYRICS_FONT_SIZE_STEP = 2;
