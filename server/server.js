@@ -777,9 +777,11 @@ app.get('/api/sunday-songs', async (req, res) => {
   }
 });
 
-app.put('/api/sunday-songs/order', requireAdmin, async (req, res) => {
+// Exporters (who build the Sunday list) may reorder too, but only the nearest Sunday's list -
+// planning further-out Sundays stays admin-only.
+app.put('/api/sunday-songs/order', requirePermission('canExport'), async (req, res) => {
   const songIds = Array.isArray(req.body?.songIds) ? req.body.songIds : [];
-  const date = isValidSundayWithinMonth(req.body?.date) ? req.body.date : nextSundayDate();
+  const date = req.permissions.isAdmin && isValidSundayWithinMonth(req.body?.date) ? req.body.date : nextSundayDate();
   if (!songIds.length) return res.status(400).json({ error: 'songIds is required' });
   try {
     const current = await db`SELECT song_id FROM sunday_songs WHERE sunday_date = ${date}`;

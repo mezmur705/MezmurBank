@@ -831,6 +831,8 @@ function upcomingSundays() {
     function renderSundaySongsList(container, items) {
       if (!items.length) { container.innerHTML = '<p class="comment-hint">No songs added for this Sunday yet.</p>'; return; }
       const playableCount = items.filter(i => i.youtubeVideoId).length;
+      // Exporters can sort the nearest Sunday's list (the one they add to); admins any date.
+      const canSort = isAdmin || (canExport && sundaySelectedDate === upcomingSundays()[0]);
       const playAllHtml = playableCount
         ? `<button class="keyboard-btn" id="sundayPlayAllBtn" style="margin-bottom:10px; padding:5px 12px; font-size:0.85rem;">▶ Play All (${playableCount})</button>`
         : '';
@@ -843,10 +845,10 @@ function upcomingSundays() {
             <span class="sunday-song-title">${formatOpenSongId(item.openSongId)} ${escapeHtml(item.title)}</span>
             <span class="sunday-song-singer">${escapeHtml(item.singer)}</span>
           </div>
-          ${isAdmin ? `<div class="sunday-song-actions">
+          ${canSort ? `<div class="sunday-song-actions">
             <button title="Move up" ${index === 0 ? 'disabled' : ''} onclick='moveSundaySong(${index}, -1)'>⬆️</button>
             <button title="Move down" ${index === items.length - 1 ? 'disabled' : ''} onclick='moveSundaySong(${index}, 1)'>⬇️</button>
-            <button class="destructive" title="Remove from Sunday" onclick='removeSundaySong(${JSON.stringify(item.songId)})'>✕</button>
+            ${isAdmin ? `<button class="destructive" title="Remove from Sunday" onclick='removeSundaySong(${JSON.stringify(item.songId)})'>✕</button>` : ''}
           </div>` : ''}
         </div>
       `).join('');
