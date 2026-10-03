@@ -5,7 +5,7 @@ const postgres = require('postgres');
 const zlib = require('zlib');
 const { promisify } = require('util');
 const gzipAsync = promisify(zlib.gzip);
-const { requireSupabaseUser, verifySupabaseToken } = require('./lib/supabaseAuth');
+const { verifySupabaseToken } = require('./lib/supabaseAuth');
 const { getDriveClient } = require('./lib/googleDrive');
 const { buildOpenSongXml } = require('./lib/openSongXml');
 const { buildSlideGroup, buildSetXml } = require('./lib/openSongSet');
@@ -60,18 +60,44 @@ function extractYoutubeId(input) {
 
 // Emails in ADMIN_EMAILS get admin rights on the web app just by signing in with Google -
 // there is no separate admin password.
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+function parseEmailList(value) {
+  return (value || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+}
+const ADMIN_EMAILS = parseEmailList(process.env.ADMIN_EMAILS);
 
-async function isAdminRequest(req) {
+async function requestEmail(req) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (!token || !ADMIN_EMAILS.length) return false;
+  if (!token) return null;
   try {
     const payload = await verifySupabaseToken(token);
-    return !!payload.email && ADMIN_EMAILS.includes(payload.email.toLowerCase());
+    return payload.email ? payload.email.toLowerCase() : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+async function isAdminRequest(req) {
+  if (!ADMIN_EMAILS.length) return false;
+  const email = await requestEmail(req);
+  return !!email && ADMIN_EMAILS.includes(email);
+}
+
+// Admins can do everything; other signed-in users get whatever an admin granted their email
+// on the Manage Access page (user_permissions table).
+async function getPermissions(req) {
+  const email = await requestEmail(req);
+  if (!email) return { email: null, isAdmin: false, canAddSongs: false, canAddSingers: false, canExport: false };
+  if (ADMIN_EMAILS.includes(email)) return { email, isAdmin: true, canAddSongs: true, canAddSingers: true, canExport: true };
+  const rows = await db`SELECT can_add_songs, can_add_singers, can_export FROM user_permissions WHERE email = ${email}`;
+  const row = rows[0];
+  return {
+    email,
+    isAdmin: false,
+    canAddSongs: !!row?.can_add_songs,
+    canAddSingers: !!row?.can_add_singers,
+    canExport: !!row?.can_export,
+  };
 }
 
 function requireAdmin(req, res, next) {
@@ -79,6 +105,26 @@ function requireAdmin(req, res, next) {
     if (!ok) return res.status(401).json({ error: 'Not signed in as admin' });
     next();
   });
+}
+
+const PERMISSION_LABELS = { canAddSongs: 'add songs', canAddSingers: 'add singers', canExport: 'export to OpenSong' };
+
+// Leaves the caller's permissions on req.permissions for routes that need finer checks.
+function requirePermission(name) {
+  return (req, res, next) => {
+    getPermissions(req)
+      .then(permissions => {
+        if (!permissions[name]) {
+          return res.status(403).json({ error: `Your account is not allowed to ${PERMISSION_LABELS[name]}. Ask an admin for access.` });
+        }
+        req.permissions = permissions;
+        next();
+      })
+      .catch(err => {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+      });
+  };
 }
 
 app.use(express.json({ limit: '10mb' }));
@@ -96,7 +142,58 @@ app.use('/api', (req, res, next) => {
 });
 
 app.get('/api/admin/status', async (req, res) => {
-  res.json({ isAdmin: await isAdminRequest(req) });
+  try {
+    const { isAdmin, canAddSongs, canAddSingers, canExport } = await getPermissions(req);
+    res.json({ isAdmin, canAddSongs, canAddSingers, canExport });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function permissionRowToJson(r) {
+  return { email: r.email, canAddSongs: r.can_add_songs, canAddSingers: r.can_add_singers, canExport: r.can_export };
+}
+
+app.get('/api/admin/permissions', requireAdmin, async (req, res) => {
+  try {
+    const rows = await db`SELECT email, can_add_songs, can_add_singers, can_export FROM user_permissions ORDER BY email`;
+    res.json(rows.map(permissionRowToJson));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/permissions', requireAdmin, async (req, res) => {
+  const email = (req.body?.email || '').toString().trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
+  const canAddSongs = !!req.body?.canAddSongs;
+  const canAddSingers = !!req.body?.canAddSingers;
+  const canExport = !!req.body?.canExport;
+  try {
+    const rows = await db`
+      INSERT INTO user_permissions (email, can_add_songs, can_add_singers, can_export)
+      VALUES (${email}, ${canAddSongs}, ${canAddSingers}, ${canExport})
+      ON CONFLICT (email) DO UPDATE SET
+        can_add_songs = EXCLUDED.can_add_songs, can_add_singers = EXCLUDED.can_add_singers, can_export = EXCLUDED.can_export
+      RETURNING email, can_add_songs, can_add_singers, can_export
+    `;
+    res.json(permissionRowToJson(rows[0]));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/permissions/:email', requireAdmin, async (req, res) => {
+  try {
+    await db`DELETE FROM user_permissions WHERE email = ${req.params.email.toLowerCase()}`;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 async function upsertSinger(tx, name) {
@@ -192,17 +289,28 @@ app.get('/api/mezmurs', async (req, res) => {
   }
 });
 
-app.post('/api/mezmurs', requireAdmin, async (req, res) => {
+// Non-admins (granted "add songs" on the Manage Access page) can only create new songs: no
+// overwriting an existing one, no picking OpenSong IDs, and a new singer only if they were
+// also granted "add singers". Admins keep the old upsert behavior (used by folder upload).
+class ForbiddenError extends Error {}
+
+app.post('/api/mezmurs', requirePermission('canAddSongs'), async (req, res) => {
   const songs = Array.isArray(req.body?.songs) ? req.body.songs : [];
   if (!songs.length) return res.status(400).json({ error: 'No songs provided' });
+  const { isAdmin, canAddSingers } = req.permissions;
   try {
     const savedIds = [];
+    const createdSongs = [];
     await db.begin(async tx => {
       const singerIdCache = new Map();
       let nextOpenSongId = null;
       for (const song of songs) {
         let singerId = singerIdCache.get(song.singer);
         if (singerId === undefined) {
+          if (!canAddSingers) {
+            const found = await tx`SELECT id FROM singers WHERE lower(name) = lower(${song.singer})`;
+            if (!found.length) throw new ForbiddenError(`Singer "${song.singer}" doesn't exist yet, and your account is not allowed to add singers. Ask an admin to add the singer first.`);
+          }
           singerId = await upsertSinger(tx, song.singer);
           singerIdCache.set(song.singer, singerId);
         }
@@ -210,11 +318,14 @@ app.post('/api/mezmurs', requireAdmin, async (req, res) => {
         const language = song.language || detectLanguage(song.title, song.lyrics);
         const { lyrics, openSongFormat } = buildLyricsAndFormat(song.lyrics);
 
-        let openSongId = song.openSongId || song.OpenSongID || null;
+        const existing = await tx`SELECT open_song_id FROM songs WHERE id = ${id}`;
+        if (existing.length && !isAdmin) throw new ForbiddenError(`"${song.title}" by ${song.singer} already exists. Only an admin can change an existing song.`);
+        if (!existing.length) createdSongs.push({ id, title: song.title, singer: song.singer });
+
+        let openSongId = isAdmin ? (song.openSongId || song.OpenSongID || null) : null;
         if (openSongId == null) {
           // No ID supplied (e.g. the "Add Song" form) - keep an existing song's current
           // ID untouched, or hand a brand-new song the next free number in sequence.
-          const existing = await tx`SELECT open_song_id FROM songs WHERE id = ${id}`;
           if (existing.length) {
             openSongId = existing[0].open_song_id;
           } else {
@@ -239,7 +350,11 @@ app.post('/api/mezmurs', requireAdmin, async (req, res) => {
     res.json({ ok: true, count: songs.length });
     // Fired after responding - a slow/rate-limited Drive export must never delay saving.
     exportSongsToDriveInBackground(savedIds).catch(err => console.error('Background Drive export batch failed:', err));
+    if (!isAdmin && createdSongs.length) {
+      notifySongsAdded(req, req.permissions.email, createdSongs).catch(err => console.error('New-song email failed:', err));
+    }
   } catch (err) {
+    if (err instanceof ForbiddenError) return res.status(403).json({ error: err.message });
     console.error(err);
     res.status(500).json({ error: err.message });
   }
@@ -255,7 +370,7 @@ app.get('/api/singers', async (req, res) => {
   }
 });
 
-app.post('/api/singers', requireAdmin, async (req, res) => {
+app.post('/api/singers', requirePermission('canAddSingers'), async (req, res) => {
   const name = (req.body?.name || '').toString().trim();
   const amharicName = (req.body?.amharicName || '').toString().trim() || null;
   if (!name) return res.status(400).json({ error: 'Name is required' });
@@ -585,7 +700,7 @@ async function regenerateSundaySetFile(drive, dateStr) {
   return dateStr;
 }
 
-app.post('/api/mezmurs/:id/export-drive', requireSupabaseUser, async (req, res) => {
+app.post('/api/mezmurs/:id/export-drive', requirePermission('canExport'), async (req, res) => {
   try {
     const drive = getDriveClient();
     const exported = await exportSongFileToDrive(drive, req.params.id);
@@ -794,6 +909,21 @@ async function notifyYoutubeLinkChange(req, songId, videoId) {
     `Link: ${songLink}`,
     `New video: ${videoId ? `https://www.youtube.com/watch?v=${videoId}` : '(none - marked as no video)'}`,
     `Updated by: ${requester}`,
+    `Time: ${new Date().toISOString()}`,
+  ].join('\n');
+  await sendNotificationEmail(subject, text);
+}
+
+// Emails the admin inbox when a non-admin adds songs, so new additions can be reviewed.
+async function notifySongsAdded(req, addedBy, songs) {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const subject = songs.length === 1
+    ? `New song added: ${songs[0].title} - ${songs[0].singer}`
+    : `${songs.length} new songs added`;
+  const text = [
+    ...songs.map(s => `${s.title} - ${s.singer}\n${baseUrl}/?song=${encodeURIComponent(s.id)}`),
+    '',
+    `Added by: ${addedBy}`,
     `Time: ${new Date().toISOString()}`,
   ].join('\n');
   await sendNotificationEmail(subject, text);

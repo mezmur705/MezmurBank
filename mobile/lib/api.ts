@@ -167,6 +167,22 @@ export async function confirmYoutubeLink(songId: string, videoIdOrLink: string):
   return body;
 }
 
+// Whether the signed-in user may export to the OpenSong Drive folder (admins, plus the
+// server's EXPORT_EMAILS list). Any failure is treated as "no".
+export async function getCanExport(accessToken: string): Promise<boolean> {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) return false;
+  try {
+    const response = await fetch(`${apiUrl}/api/admin/status`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const body = await response.json();
+    return !!body?.canExport;
+  } catch {
+    return false;
+  }
+}
+
 export async function exportToDrive(
   songId: string,
   accessToken: string

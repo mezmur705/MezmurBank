@@ -161,6 +161,15 @@
     .account-menu-item.admin-only, .account-menu-divider.admin-only { display: none; }
     body.is-admin .account-menu-item.admin-only { display: flex; }
     body.is-admin .account-menu-divider.admin-only { display: block; }
+    .account-menu-item.perm-add-songs, .account-menu-item.perm-add-singers { display: none; }
+    body.can-add-songs .account-menu-item.perm-add-songs, body.can-add-singers .account-menu-item.perm-add-singers { display: flex; }
+    body.can-add-songs .account-menu-divider.admin-only, body.can-add-singers .account-menu-divider.admin-only { display: block; }
+    .access-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin: 10px 0; }
+    .access-table th, .access-table td { padding: 6px 4px; border-bottom: 1px solid #edf2f7; text-align: center; }
+    .access-table th:first-child, .access-table td:first-child { text-align: left; word-break: break-all; }
+    .access-add-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+    .access-add-row input[type=email] { flex: 1 1 220px; padding: 6px 8px; }
+    .access-add-row label { font-size: 0.85rem; display: inline-flex; align-items: center; gap: 3px; }
 
 
     .modal-overlay { position: fixed; inset: 0; background: rgba(26,32,44,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
@@ -188,6 +197,7 @@
     .favorite-btn:hover { background: #e2e8f0; }
     .export-drive-btn { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 0.9rem; color: #4a5568; display: inline-flex; align-items: center; gap: 5px; }
     .export-drive-btn:hover { background: #e2e8f0; }
+    body:not(.can-export) .export-drive-btn { display: none; }
     #signInModalOverlay .modal-box { max-width: 360px; text-align: center; }
     #googleBtnContainer { display: flex; justify-content: center; margin-top: 12px; min-height: 44px; }
 
@@ -242,8 +252,9 @@
       <div class="account-menu-item" onclick="showRecentlyViewedView()">🕘 Recently Viewed</div>
       <div class="account-menu-divider admin-only"></div>
       <div class="account-menu-item admin-only" onclick="closeAccountMenu(); document.getElementById('songsFolder').click();">▣ Upload Songs Folder</div>
-      <div class="account-menu-item admin-only" onclick="closeAccountMenu(); openAddSingerModal();">➕ Add Singer</div>
-      <div class="account-menu-item admin-only" onclick="closeAccountMenu(); openAddSongModal();">➕ Add Song</div>
+      <div class="account-menu-item perm-add-singers" onclick="closeAccountMenu(); openAddSingerModal();">➕ Add Singer</div>
+      <div class="account-menu-item perm-add-songs" onclick="closeAccountMenu(); openAddSongModal();">➕ Add Song</div>
+      <div class="account-menu-item admin-only" onclick="closeAccountMenu(); openManageAccessModal();">👥 Manage Access</div>
       <div class="account-menu-divider"></div>
       <div class="account-menu-item" id="authMenuItem" onclick="handleAuthMenuClick()">Sign In</div>
     </div>
@@ -290,6 +301,9 @@
     window.onYouTubeIframeAPIReady = function () { youtubeApiReady = true; };
 
     let isAdmin = false;
+    let canExport = false;
+    let canAddSongs = false;
+    let canAddSingers = false;
     let selectedSongId = null;
 
     // "Play All" queue - null when nothing's queued. ytQueuePlayer is only used while a
@@ -336,8 +350,14 @@
         const res = await fetch('/api/admin/status', { headers: authHeaders() });
         const data = await res.json();
         isAdmin = !!data.isAdmin;
+        canExport = !!data.canExport;
+        canAddSongs = !!data.canAddSongs;
+        canAddSingers = !!data.canAddSingers;
       } catch (err) {
         isAdmin = false;
+        canExport = false;
+        canAddSongs = false;
+        canAddSingers = false;
       }
       updateAdminUI();
     }
@@ -1580,7 +1600,7 @@ function upcomingSundays() {
     }
 
     function openAddSingerModal() {
-      if (!isAdmin) return;
+      if (!canAddSingers) return;
       const box = document.getElementById('editModalBox');
       box.innerHTML = `<h3>Add Singer</h3>
         <div class="modal-field"><label>Name</label><input type="text" id="newSingerName" placeholder="e.g. Abba Natnael Taye"></div>
@@ -1619,7 +1639,7 @@ function upcomingSundays() {
     }
 
     function openAddSongModal() {
-      if (!isAdmin) return;
+      if (!canAddSongs) return;
       const box = document.getElementById('editModalBox');
       const singerOptions = mezmurData
         .map(s => `<option value="${escapeHtml(s.singer)}">${escapeHtml(s.singer)}</option>`)
@@ -1667,6 +1687,116 @@ function upcomingSundays() {
 
     function updateAdminUI() {
       document.body.classList.toggle('is-admin', isAdmin);
+      document.body.classList.toggle('can-export', canExport);
+      document.body.classList.toggle('can-add-songs', canAddSongs);
+      document.body.classList.toggle('can-add-singers', canAddSingers);
+    }
+
+    // Admin-only: grant non-admin users (by Google sign-in email) permission to add songs,
+    // add singers, and/or export to OpenSong. Checkbox changes save immediately.
+    const ACCESS_PERMISSIONS = [
+      { key: 'canAddSongs', label: 'Add Songs' },
+      { key: 'canAddSingers', label: 'Add Singers' },
+      { key: 'canExport', label: 'Export to OpenSong' },
+    ];
+
+    async function openManageAccessModal() {
+      if (!isAdmin) return;
+      const box = document.getElementById('editModalBox');
+      box.innerHTML = `<h3>Manage Access</h3>
+        <p style="color:#718096; font-size:0.85rem; margin-top:6px;">People sign in with Google using this email. Admins can always do everything.</p>
+        <div id="accessList">Loading…</div>
+        <div class="access-add-row">
+          <input type="email" id="accessNewEmail" placeholder="name@gmail.com">
+          ${ACCESS_PERMISSIONS.map(p => `<label><input type="checkbox" id="accessNew_${p.key}" checked> ${p.label}</label>`).join('')}
+          <button class="keyboard-btn" id="accessAddBtn">Add</button>
+        </div>
+        <div class="modal-error" id="accessError"></div>
+        <div class="modal-actions">
+          <button class="keyboard-btn" onclick="closeEditModal()">Close</button>
+        </div>`;
+      document.getElementById('accessAddBtn').onclick = addAccessEntry;
+      document.getElementById('editModalOverlay').style.display = 'flex';
+      await loadAccessList();
+    }
+
+    async function loadAccessList() {
+      const listEl = document.getElementById('accessList');
+      try {
+        const res = await fetch('/api/admin/permissions', { headers: authHeaders() });
+        const rows = await res.json();
+        if (!res.ok) throw new Error(rows.error || 'Could not load the list.');
+        if (!rows.length) { listEl.innerHTML = '<p style="color:#718096; font-size:0.9rem;">No one added yet.</p>'; return; }
+        listEl.innerHTML = `<table class="access-table">
+          <tr><th>Email</th>${ACCESS_PERMISSIONS.map(p => `<th>${p.label}</th>`).join('')}<th></th></tr>
+          ${rows.map(r => `<tr data-email="${escapeHtml(r.email)}">
+            <td>${escapeHtml(r.email)}</td>
+            ${ACCESS_PERMISSIONS.map(p => `<td><input type="checkbox" data-key="${p.key}" ${r[p.key] ? 'checked' : ''}></td>`).join('')}
+            <td><button class="copy-btn" data-remove title="Remove">🗑️</button></td>
+          </tr>`).join('')}
+        </table>`;
+        listEl.querySelectorAll('tr[data-email]').forEach(row => {
+          const email = row.dataset.email;
+          row.querySelectorAll('input[type=checkbox]').forEach(cb => {
+            cb.onchange = () => saveAccessRow(row, email);
+          });
+          row.querySelector('[data-remove]').onclick = () => removeAccessEntry(email);
+        });
+      } catch (err) {
+        listEl.innerText = err.message;
+      }
+    }
+
+    async function putAccess(entry) {
+      const res = await fetch('/api/admin/permissions', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(entry)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Save failed.');
+    }
+
+    async function saveAccessRow(row, email) {
+      const entry = { email };
+      row.querySelectorAll('input[type=checkbox]').forEach(cb => { entry[cb.dataset.key] = cb.checked; });
+      const errorEl = document.getElementById('accessError');
+      errorEl.innerText = '';
+      try {
+        await putAccess(entry);
+      } catch (err) {
+        errorEl.innerText = err.message;
+        await loadAccessList();
+      }
+    }
+
+    async function addAccessEntry() {
+      const emailInput = document.getElementById('accessNewEmail');
+      const entry = { email: emailInput.value.trim() };
+      ACCESS_PERMISSIONS.forEach(p => { entry[p.key] = document.getElementById(`accessNew_${p.key}`).checked; });
+      const errorEl = document.getElementById('accessError');
+      errorEl.innerText = '';
+      if (!entry.email) { errorEl.innerText = 'Enter an email address.'; return; }
+      try {
+        await putAccess(entry);
+        emailInput.value = '';
+        await loadAccessList();
+      } catch (err) {
+        errorEl.innerText = err.message;
+      }
+    }
+
+    async function removeAccessEntry(email) {
+      if (!confirm(`Remove all access for ${email}?`)) return;
+      const errorEl = document.getElementById('accessError');
+      errorEl.innerText = '';
+      try {
+        const res = await fetch(`/api/admin/permissions/${encodeURIComponent(email)}`, { method: 'DELETE', headers: authHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Remove failed.');
+        await loadAccessList();
+      } catch (err) {
+        errorEl.innerText = err.message;
+      }
     }
 
     async function init() {

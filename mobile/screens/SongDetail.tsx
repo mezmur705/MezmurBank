@@ -15,6 +15,7 @@ import {
   removeFavorite,
   recordRecentlyViewed,
   exportToDrive,
+  getCanExport,
   reactToSong,
   confirmYoutubeLink,
   type ReactionType,
@@ -93,6 +94,21 @@ export default function SongDetail({ route }: Props) {
   const [commentText, setCommentText] = useState('');
   const [postingComment, setPostingComment] = useState(false);
   const [exportingDrive, setExportingDrive] = useState(false);
+  const [canExport, setCanExport] = useState(false);
+
+  useEffect(() => {
+    if (!session) {
+      setCanExport(false);
+      return;
+    }
+    let cancelled = false;
+    getCanExport(session.access_token).then(ok => {
+      if (!cancelled) setCanExport(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token]);
 
   // Local override so a saved link shows immediately without waiting on a full library
   // refresh (song list is ~3200 rows) - same pattern as reactionOverrides below.
@@ -415,18 +431,20 @@ export default function SongDetail({ route }: Props) {
             />
           )}
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleExportToDrive}
-          style={styles.shareButton}
-          accessibilityLabel="Export to Drive"
-          disabled={exportingDrive}
-        >
-          {exportingDrive ? (
-            <ActivityIndicator size="small" color={colors.textPrimary} />
-          ) : (
-            <MaterialIcons name="cloud-upload" size={20} color={colors.textPrimary} />
-          )}
-        </TouchableOpacity>
+        {canExport && (
+          <TouchableOpacity
+            onPress={handleExportToDrive}
+            style={styles.shareButton}
+            accessibilityLabel="Export to Drive"
+            disabled={exportingDrive}
+          >
+            {exportingDrive ? (
+              <ActivityIndicator size="small" color={colors.textPrimary} />
+            ) : (
+              <MaterialIcons name="cloud-upload" size={20} color={colors.textPrimary} />
+            )}
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={handleShare} style={styles.shareButton} accessibilityLabel="Share song">
           <MaterialIcons name="share" size={20} color={colors.textPrimary} />
         </TouchableOpacity>

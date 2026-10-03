@@ -124,6 +124,18 @@ drop index if exists ux_sunday_songs_song_id;
 create unique index if not exists ux_sunday_songs_song_date on public.sunday_songs(song_id, sunday_date);
 create index if not exists ix_sunday_songs_date_position on public.sunday_songs(sunday_date, position);
 
+-- What non-admin users may do, granted by email on the web app's Manage Access page.
+-- Only the API server reads/writes this (RLS on, no policies), so the list isn't exposed
+-- to clients through Supabase directly. Admins (ADMIN_EMAILS env var) don't need a row.
+create table if not exists public.user_permissions (
+    email text primary key,
+    can_add_songs boolean not null default false,
+    can_add_singers boolean not null default false,
+    can_export boolean not null default false,
+    created_at timestamptz not null default now()
+);
+alter table public.user_permissions enable row level security;
+
 -- Auto-creates a profiles row the moment a user first authenticates (via OAuth), since
 -- profiles.id is a strict FK that favorites/comments/recently_viewed all depend on, and
 -- there is no profiles_self_insert RLS policy for the client to upsert one itself.
