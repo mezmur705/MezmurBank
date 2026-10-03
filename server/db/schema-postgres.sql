@@ -134,6 +134,7 @@ create table if not exists public.user_permissions (
     can_export boolean not null default false,
     created_at timestamptz not null default now()
 );
+alter table public.user_permissions add column if not exists can_edit_songs boolean not null default false;
 alter table public.user_permissions enable row level security;
 
 -- Auto-creates a profiles row the moment a user first authenticates (via OAuth), since

@@ -182,7 +182,7 @@
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; }
     .modal-error { color: #e53e3e; font-size: 0.85rem; margin-top: 4px; }
     .edit-btn-inline { display: none; background: #3182ce; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
-    body.is-admin .edit-btn-inline { display: inline-block; }
+    body.is-admin .edit-btn-inline, body.can-edit-songs .song-edit-btn { display: inline-block; }
 
     .account-btn { background-color: #000000; color: #fff; font-size: 1rem; padding: 0; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .account-btn:hover { background-color: #282828; }
@@ -303,6 +303,7 @@
     let isAdmin = false;
     let canExport = false;
     let canAddSongs = false;
+    let canEditSongs = false;
     let canAddSingers = false;
     let selectedSongId = null;
 
@@ -352,11 +353,13 @@
         isAdmin = !!data.isAdmin;
         canExport = !!data.canExport;
         canAddSongs = !!data.canAddSongs;
+        canEditSongs = !!data.canEditSongs;
         canAddSingers = !!data.canAddSingers;
       } catch (err) {
         isAdmin = false;
         canExport = false;
         canAddSongs = false;
+        canEditSongs = false;
         canAddSingers = false;
       }
       updateAdminUI();
@@ -1217,7 +1220,7 @@ function upcomingSundays() {
       const singerEntry = mezmurData.find(item => item.singer === singerName);
       const middleFrame = document.getElementById('middleFrame');
       const ytSearchHref = youtubeSearchUrl(song, singerName);
-      middleFrame.innerHTML = `<div class="mobile-back-link" onclick="goHome()">← Back to Singers</div><div class="opensong-id-row"><div style="display:flex; gap:8px; align-items:center; margin-left:auto; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="copy-btn" id="shareSongBtn" title="Copy lyrics, YouTube link, and a link to this song">🔗</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive and add to Sunday Songs">${DRIVE_ICON_SVG}</button><button class="opensong-corner-btn" id="openSongFormatBtn" title="Open in PowerPoint">${POWERPOINT_ICON_SVG}</button><button class="edit-btn-inline" id="editSongBtn" title="Edit">✏️</button><button class="delete-btn-inline" title="Delete" onclick="deleteMezmur('${song.id}')">🗑</button></div></div><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}"><a class="yt-search-link" href="${escapeHtml(ytSearchHref)}" target="_blank" rel="noopener noreferrer" title="Search YouTube for this song &amp; singer">${highlightText(song.title, query)}</a>${langBadge(song.language)}${newBadge(song)}</h2><h4 class="singer-line" style="color:#718096; margin-bottom: 15px;">Singer: <a class="yt-search-link" href="${escapeHtml(ytSearchHref)}" target="_blank" rel="noopener noreferrer" title="Search YouTube for this song &amp; singer">${escapeHtml(singerName)}</a>${amharicName(singerEntry && singerEntry.singerAmharic)}</h4>${song.sourceUrl ? `<p class="comment-hint" style="margin-top:-10px;">Source: <a href="${escapeHtml(song.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(song.sourceName || 'External source')}</a> (CC BY-SA)</p>` : ''}</div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
+      middleFrame.innerHTML = `<div class="mobile-back-link" onclick="goHome()">← Back to Singers</div><div class="opensong-id-row"><div style="display:flex; gap:8px; align-items:center; margin-left:auto; flex-shrink:0;"><button class="favorite-btn" id="favoriteBtn" title="Add to favorites">🤍</button><button class="copy-btn" id="shareSongBtn" title="Copy lyrics, YouTube link, and a link to this song">🔗</button><button class="export-drive-btn" id="exportDriveBtn" title="Export to Drive and add to Sunday Songs">${DRIVE_ICON_SVG}</button><button class="opensong-corner-btn" id="openSongFormatBtn" title="Open in PowerPoint">${POWERPOINT_ICON_SVG}</button><button class="edit-btn-inline song-edit-btn" id="editSongBtn" title="Edit">✏️</button><button class="delete-btn-inline" title="Delete" onclick="deleteMezmur('${song.id}')">🗑</button></div></div><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;"><div style="flex:1; min-width:0;"><h2 class="lyric-title" title="${escapeHtml(song.title)}"><a class="yt-search-link" href="${escapeHtml(ytSearchHref)}" target="_blank" rel="noopener noreferrer" title="Search YouTube for this song &amp; singer">${highlightText(song.title, query)}</a>${langBadge(song.language)}${newBadge(song)}</h2><h4 class="singer-line" style="color:#718096; margin-bottom: 15px;">Singer: <a class="yt-search-link" href="${escapeHtml(ytSearchHref)}" target="_blank" rel="noopener noreferrer" title="Search YouTube for this song &amp; singer">${escapeHtml(singerName)}</a>${amharicName(singerEntry && singerEntry.singerAmharic)}</h4>${song.sourceUrl ? `<p class="comment-hint" style="margin-top:-10px;">Source: <a href="${escapeHtml(song.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(song.sourceName || 'External source')}</a> (CC BY-SA)</p>` : ''}</div></div><div class="lyric-wrapper"><button class="copy-btn" id="copyLyricsBtn" title="Copy lyrics">📋</button><div class="lyric-content">${highlightText(song.lyrics, query)}</div></div>
         <div class="engagement-bar">
           <span class="view-count" id="viewCountLabel">👁 — views</span>
           <div class="reaction-row" id="reactionRow">
@@ -1494,7 +1497,18 @@ function upcomingSundays() {
 
     async function deleteMezmur(id) {
       if (!isAdmin) return;
-      if (!confirm('Delete this mezmur from the database?')) return;
+      // Typing the number (not just clicking OK) guards against accidental deletes, e.g. a
+      // mis-tap on the small trash icon in the song list.
+      const entry = songIndex.get(id);
+      const number = entry ? formatOpenSongId(entry.song.openSongId) : null;
+      const label = entry ? `#${number} ${entry.song.title} - ${entry.singerName}` : id;
+      if (number && number !== '----') {
+        const typed = prompt(`Really delete this song permanently?\n\n${label}\n\nType the song number ${number} to confirm:`);
+        if (typed === null) return;
+        if (typed.trim().replace(/^#/, '').padStart(4, '0') !== number) { alert('Number did not match - nothing was deleted.'); return; }
+      } else if (!confirm(`Really delete this song permanently?\n\n${label}`)) {
+        return;
+      }
       const res = await fetch(`/api/mezmurs/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() });
       if (!res.ok) { alert('Delete failed.'); return; }
       await loadMezmursFromDb();
@@ -1506,7 +1520,7 @@ function upcomingSundays() {
     }
 
     async function openEditSongModal(song, singerName) {
-      if (!isAdmin) return;
+      if (!canEditSongs) return;
       const box = document.getElementById('editModalBox');
       let singers = [];
       try { singers = await (await fetch('/api/singers')).json(); } catch (err) { /* fall back to current singer only */ }
@@ -1691,6 +1705,7 @@ function upcomingSundays() {
       document.body.classList.toggle('is-admin', isAdmin);
       document.body.classList.toggle('can-export', canExport);
       document.body.classList.toggle('can-add-songs', canAddSongs);
+      document.body.classList.toggle('can-edit-songs', canEditSongs);
       document.body.classList.toggle('can-add-singers', canAddSingers);
     }
 
@@ -1698,6 +1713,7 @@ function upcomingSundays() {
     // add singers, and/or export to OpenSong. Checkbox changes save immediately.
     const ACCESS_PERMISSIONS = [
       { key: 'canAddSongs', label: 'Add Songs' },
+      { key: 'canEditSongs', label: 'Edit Songs' },
       { key: 'canAddSingers', label: 'Add Singers' },
       { key: 'canExport', label: 'Export to OpenSong' },
     ];

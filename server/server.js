@@ -87,14 +87,15 @@ async function isAdminRequest(req) {
 // on the Manage Access page (user_permissions table).
 async function getPermissions(req) {
   const email = await requestEmail(req);
-  if (!email) return { email: null, isAdmin: false, canAddSongs: false, canAddSingers: false, canExport: false };
-  if (ADMIN_EMAILS.includes(email)) return { email, isAdmin: true, canAddSongs: true, canAddSingers: true, canExport: true };
-  const rows = await db`SELECT can_add_songs, can_add_singers, can_export FROM user_permissions WHERE email = ${email}`;
+  if (!email) return { email: null, isAdmin: false, canAddSongs: false, canEditSongs: false, canAddSingers: false, canExport: false };
+  if (ADMIN_EMAILS.includes(email)) return { email, isAdmin: true, canAddSongs: true, canEditSongs: true, canAddSingers: true, canExport: true };
+  const rows = await db`SELECT can_add_songs, can_edit_songs, can_add_singers, can_export FROM user_permissions WHERE email = ${email}`;
   const row = rows[0];
   return {
     email,
     isAdmin: false,
     canAddSongs: !!row?.can_add_songs,
+    canEditSongs: !!row?.can_edit_songs,
     canAddSingers: !!row?.can_add_singers,
     canExport: !!row?.can_export,
   };
@@ -107,7 +108,7 @@ function requireAdmin(req, res, next) {
   });
 }
 
-const PERMISSION_LABELS = { canAddSongs: 'add songs', canAddSingers: 'add singers', canExport: 'export to OpenSong' };
+const PERMISSION_LABELS = { canAddSongs: 'add songs', canEditSongs: 'edit songs', canAddSingers: 'add singers', canExport: 'export to OpenSong' };
 
 // Leaves the caller's permissions on req.permissions for routes that need finer checks.
 function requirePermission(name) {
@@ -143,8 +144,8 @@ app.use('/api', (req, res, next) => {
 
 app.get('/api/admin/status', async (req, res) => {
   try {
-    const { isAdmin, canAddSongs, canAddSingers, canExport } = await getPermissions(req);
-    res.json({ isAdmin, canAddSongs, canAddSingers, canExport });
+    const { isAdmin, canAddSongs, canEditSongs, canAddSingers, canExport } = await getPermissions(req);
+    res.json({ isAdmin, canAddSongs, canEditSongs, canAddSingers, canExport });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -152,12 +153,12 @@ app.get('/api/admin/status', async (req, res) => {
 });
 
 function permissionRowToJson(r) {
-  return { email: r.email, canAddSongs: r.can_add_songs, canAddSingers: r.can_add_singers, canExport: r.can_export };
+  return { email: r.email, canAddSongs: r.can_add_songs, canEditSongs: r.can_edit_songs, canAddSingers: r.can_add_singers, canExport: r.can_export };
 }
 
 app.get('/api/admin/permissions', requireAdmin, async (req, res) => {
   try {
-    const rows = await db`SELECT email, can_add_songs, can_add_singers, can_export FROM user_permissions ORDER BY email`;
+    const rows = await db`SELECT email, can_add_songs, can_edit_songs, can_add_singers, can_export FROM user_permissions ORDER BY email`;
     res.json(rows.map(permissionRowToJson));
   } catch (err) {
     console.error(err);
@@ -169,15 +170,17 @@ app.put('/api/admin/permissions', requireAdmin, async (req, res) => {
   const email = (req.body?.email || '').toString().trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
   const canAddSongs = !!req.body?.canAddSongs;
+  const canEditSongs = !!req.body?.canEditSongs;
   const canAddSingers = !!req.body?.canAddSingers;
   const canExport = !!req.body?.canExport;
   try {
     const rows = await db`
-      INSERT INTO user_permissions (email, can_add_songs, can_add_singers, can_export)
-      VALUES (${email}, ${canAddSongs}, ${canAddSingers}, ${canExport})
+      INSERT INTO user_permissions (email, can_add_songs, can_edit_songs, can_add_singers, can_export)
+      VALUES (${email}, ${canAddSongs}, ${canEditSongs}, ${canAddSingers}, ${canExport})
       ON CONFLICT (email) DO UPDATE SET
-        can_add_songs = EXCLUDED.can_add_songs, can_add_singers = EXCLUDED.can_add_singers, can_export = EXCLUDED.can_export
-      RETURNING email, can_add_songs, can_add_singers, can_export
+        can_add_songs = EXCLUDED.can_add_songs, can_edit_songs = EXCLUDED.can_edit_songs,
+        can_add_singers = EXCLUDED.can_add_singers, can_export = EXCLUDED.can_export
+      RETURNING email, can_add_songs, can_edit_songs, can_add_singers, can_export
     `;
     res.json(permissionRowToJson(rows[0]));
   } catch (err) {
@@ -408,7 +411,7 @@ app.put('/api/singers/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.put('/api/mezmurs/:id', requireAdmin, async (req, res) => {
+app.put('/api/mezmurs/:id', requirePermission('canEditSongs'), async (req, res) => {
   const title = (req.body?.title || '').toString().trim();
   const rawLyrics = (req.body?.lyrics || '').toString();
   const language = req.body?.language;
@@ -421,7 +424,10 @@ app.put('/api/mezmurs/:id', requireAdmin, async (req, res) => {
   const mediaUrl = (req.body?.mediaUrl || '').toString().trim() || null;
 
   try {
-    const existing = await db`SELECT singer_id FROM songs WHERE id = ${req.params.id}`;
+    const existing = await db`
+      SELECT s.singer_id, s.title, s.lyrics, s.language, s.youtube_video_id, s.media_url, sg.name AS singer_name
+      FROM songs s JOIN singers sg ON sg.id = s.singer_id WHERE s.id = ${req.params.id}
+    `;
     if (!existing.length) return res.status(404).json({ error: 'Song not found' });
     const finalSingerId = singerId || existing[0].singer_id;
     const finalLanguage = language || detectLanguage(title, rawLyrics);
@@ -436,6 +442,18 @@ app.put('/api/mezmurs/:id', requireAdmin, async (req, res) => {
     res.json({ ok: true });
     // Fired after responding - a slow/rate-limited Drive export must never delay saving.
     exportSongsToDriveInBackground([req.params.id]).catch(err => console.error('Background Drive export failed:', err));
+    if (!req.permissions.isAdmin) {
+      const before = existing[0];
+      const changed = [
+        before.title !== title && 'title',
+        before.singer_id !== finalSingerId && 'singer',
+        before.language !== finalLanguage && 'language',
+        before.lyrics !== lyrics && 'lyrics',
+        (before.youtube_video_id || null) !== (youtubeVideoId || null) && 'YouTube link',
+        (before.media_url || null) !== mediaUrl && 'media link',
+      ].filter(Boolean);
+      notifySongEdited(req, req.permissions.email, req.params.id, before, title, changed).catch(err => console.error('Song-edit email failed:', err));
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -925,6 +943,26 @@ async function notifySongsAdded(req, addedBy, songs) {
   await sendNotificationEmail(subject, text);
 }
 
+// Emails the admin inbox when a non-admin edits a song, with the old title/lyrics so a bad
+// edit can be undone by hand.
+async function notifySongEdited(req, editedBy, songId, before, newTitle, changed) {
+  const link = `${req.protocol}://${req.get('host')}/?song=${encodeURIComponent(songId)}`;
+  const text = [
+    `Song: ${newTitle} - ${before.singer_name}`,
+    `Link: ${link}`,
+    `Changed: ${changed.length ? changed.join(', ') : 'nothing (saved without changes)'}`,
+    `Edited by: ${editedBy}`,
+    `Time: ${new Date().toISOString()}`,
+    '',
+    '--- Before the edit ---',
+    `Title: ${before.title}`,
+    `YouTube: ${before.youtube_video_id ? `https://www.youtube.com/watch?v=${before.youtube_video_id}` : '(none)'}`,
+    'Lyrics:',
+    before.lyrics,
+  ].join('\n');
+  await sendNotificationEmail(`Song edited: ${newTitle}`, text);
+}
+
 // Saves a YouTube video as the song's confirmed link, the field everyone else sees. Three
 // ways it can be called:
 //   - no "videoId" key at all: promote the cached auto-search suggestion (plain confirm button)
@@ -966,10 +1004,33 @@ app.post('/api/mezmurs/:id/youtube/confirm', async (req, res) => {
   }
 });
 
+// Emails the deleted song's full details so an accidental delete can be restored by hand.
+async function notifySongDeleted(req, song) {
+  const text = [
+    `Song: ${song.title} - ${song.singer_name}`,
+    `OpenSong ID: #${song.open_song_id}`,
+    `Song ID: ${song.id}`,
+    `Language: ${song.language}`,
+    `YouTube: ${song.youtube_video_id ? `https://www.youtube.com/watch?v=${song.youtube_video_id}` : '(none)'}`,
+    `Media link: ${song.media_url || '(none)'}`,
+    `Deleted by: ${await identifyRequester(req)}`,
+    `Time: ${new Date().toISOString()}`,
+    '',
+    '--- Lyrics ---',
+    song.lyrics,
+  ].join('\n');
+  await sendNotificationEmail(`Song deleted: #${song.open_song_id} ${song.title}`, text);
+}
+
 app.delete('/api/mezmurs/:id', requireAdmin, async (req, res) => {
   try {
-    await db`DELETE FROM songs WHERE id = ${req.params.id}`;
+    const rows = await db`
+      DELETE FROM songs s USING singers sg
+      WHERE s.id = ${req.params.id} AND sg.id = s.singer_id
+      RETURNING s.id, s.title, s.lyrics, s.language, s.open_song_id, s.youtube_video_id, s.media_url, sg.name AS singer_name
+    `;
     res.json({ ok: true });
+    if (rows.length) notifySongDeleted(req, rows[0]).catch(err => console.error('Song-delete email failed:', err));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
