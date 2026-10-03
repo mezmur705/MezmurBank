@@ -709,24 +709,18 @@ app.post('/api/mezmurs/:id/export-drive', requirePermission('canExport'), async 
 
     // Adding to the Sunday set is best-effort - a failure here (e.g. a transient Drive
     // error) must not make the browser think the song file itself failed to export.
-    // Non-admins can add songs any day through the target Sunday itself; once that day
-    // has passed (Monday onward), the set is considered final until admin reopens it,
-    // so only an admin can still add to it.
+    // Anyone allowed to export adds to the upcoming Sunday's list, any day of the week
+    // through that Sunday itself (nextSundayDate rolls over to the following week on Monday).
     let sundayDate = null;
     let sundayError = null;
     try {
       const targetDate = nextSundayDate();
       const alreadyOnSunday = await db`SELECT 1 FROM sunday_songs WHERE song_id = ${req.params.id} AND sunday_date = ${targetDate}`;
-      const isSundayToday = new Date().getUTCDay() === 0;
-      if (!alreadyOnSunday.length && !isSundayToday && !(await isAdminRequest(req))) {
-        sundayError = 'The Sunday Songs list is locked until next Sunday - ask an admin to add this song.';
-      } else {
-        if (!alreadyOnSunday.length) {
-          const [{ max_pos }] = await db`SELECT COALESCE(MAX(position), 0) AS max_pos FROM sunday_songs WHERE sunday_date = ${targetDate}`;
-          await db`INSERT INTO sunday_songs (song_id, sunday_date, position) VALUES (${req.params.id}, ${targetDate}, ${max_pos + 1})`;
-        }
-        sundayDate = await regenerateSundaySetFile(drive, targetDate);
+      if (!alreadyOnSunday.length) {
+        const [{ max_pos }] = await db`SELECT COALESCE(MAX(position), 0) AS max_pos FROM sunday_songs WHERE sunday_date = ${targetDate}`;
+        await db`INSERT INTO sunday_songs (song_id, sunday_date, position) VALUES (${req.params.id}, ${targetDate}, ${max_pos + 1})`;
       }
+      sundayDate = await regenerateSundaySetFile(drive, targetDate);
     } catch (sundayErr) {
       console.error('Sunday set update failed:', sundayErr);
       sundayError = sundayErr.message;
