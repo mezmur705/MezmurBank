@@ -9,6 +9,7 @@ const { verifySupabaseToken } = require('./lib/supabaseAuth');
 const { getDriveClient } = require('./lib/googleDrive');
 const { buildOpenSongXml } = require('./lib/openSongXml');
 const { buildSlideGroup, buildSetXml } = require('./lib/openSongSet');
+const { buildSundayHtml } = require('./lib/sundayHtml');
 const { buildLyricsAndFormat } = require('./lib/lyricsFormat');
 const { sendNotificationEmail } = require('./lib/mailer');
 
@@ -692,9 +693,23 @@ function isValidSundayWithinMonth(dateStr) {
   return d >= today && d <= max;
 }
 
+async function upsertDriveFile(drive, fileName, folderId, mimeType, body) {
+  const existingId = await findDriveFile(drive, fileName, folderId);
+  if (existingId) {
+    await drive.files.update({ fileId: existingId, media: { mimeType, body }, supportsAllDrives: true });
+  } else {
+    await drive.files.create({
+      requestBody: { name: fileName, parents: [folderId] },
+      media: { mimeType, body },
+      supportsAllDrives: true,
+      fields: 'id',
+    });
+  }
+}
+
 async function regenerateSundaySetFile(drive, dateStr) {
   const rows = await db`
-    SELECT s.title, s.open_song_id, sg.name AS singer_name
+    SELECT s.title, s.open_song_id, s.lyrics, s.youtube_video_id, sg.name AS singer_name
     FROM sunday_songs ss
     JOIN songs s ON s.id = ss.song_id
     JOIN singers sg ON sg.id = s.singer_id
@@ -703,17 +718,17 @@ async function regenerateSundaySetFile(drive, dateStr) {
   `;
   const xml = buildSetXml(dateStr, rows.map(r => ({ openSongId: r.open_song_id, title: r.title, singerName: r.singer_name })));
   const folderId = process.env.GOOGLE_DRIVE_TODAY_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID;
-  const fileName = `${dateStr}.txt`;
-  const existingId = await findDriveFile(drive, fileName, folderId);
-  if (existingId) {
-    await drive.files.update({ fileId: existingId, media: { mimeType: 'text/plain', body: xml }, supportsAllDrives: true });
-  } else {
-    await drive.files.create({
-      requestBody: { name: fileName, parents: [folderId] },
-      media: { mimeType: 'text/plain', body: xml },
-      supportsAllDrives: true,
-      fields: 'id',
-    });
+  await upsertDriveFile(drive, `${dateStr}.txt`, folderId, 'text/plain', xml);
+
+  // Offline lyrics handout next to the OpenSong set - best-effort, so a failure here never
+  // blocks the set file the projector depends on.
+  try {
+    const html = buildSundayHtml(dateStr, rows.map(r => ({
+      openSongId: r.open_song_id, title: r.title, singerName: r.singer_name, youtubeVideoId: r.youtube_video_id, lyrics: r.lyrics,
+    })));
+    await upsertDriveFile(drive, `Sunday-Songs-${dateStr}.html`, folderId, 'text/html', html);
+  } catch (err) {
+    console.error(`Sunday HTML handout failed for ${dateStr}:`, err.message);
   }
   return dateStr;
 }
