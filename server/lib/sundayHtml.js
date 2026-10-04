@@ -1,7 +1,7 @@
 // Self-contained HTML handout for one Sunday's set: every song's lyrics plus its YouTube
-// link, in set order. No scripts, fonts, or images - it opens and reads fully offline (only
-// the YouTube links need a connection), for when the app can't load the library on a weak
-// church network.
+// link, in set order. Only an inline script, no external fonts or files - it opens and reads
+// fully offline (only the YouTube thumbnails/links need a connection), for when the app
+// can't load the library on a weak church network.
 function escapeHtml(text) {
   return String(text ?? '')
     .replace(/&/g, '&amp;')
@@ -82,6 +82,15 @@ function buildSundayHtml(dateStr, songs, { downloadUrl } = {}) {
   ${downloadUrl ? `<a class="download" href="${escapeHtml(downloadUrl)}" download>⬇ Download for offline</a>` : ''}
 ${body}
 </main>
+<script>
+  // Bring an opened song to the top of the screen. Runs after the toggle, so the previously
+  // open song (closed by the accordion) has already collapsed and the position is final.
+  document.querySelectorAll('details.song').forEach(function (el) {
+    el.addEventListener('toggle', function () {
+      if (el.open) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
 </body>
 </html>
 `;
