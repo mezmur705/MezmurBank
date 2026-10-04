@@ -16,7 +16,8 @@ function formatSundayDate(dateStr) {
 }
 
 // songs: [{ openSongId, title, singerName, youtubeVideoId, lyrics }] in set order.
-function buildSundayHtml(dateStr, songs) {
+// downloadUrl (optional): adds a "Download for offline" link - used when served by the website.
+function buildSundayHtml(dateStr, songs, { downloadUrl } = {}) {
   const pad = id => (id == null ? '----' : String(id).padStart(4, '0'));
   const toc = songs.map((s, i) => `
       <li><a href="#song-${i + 1}"><span class="num">${pad(s.openSongId)}</span> ${escapeHtml(s.title)}</a></li>`).join('');
@@ -25,7 +26,11 @@ function buildSundayHtml(dateStr, songs) {
       <h2><span class="num">${i + 1}. #${pad(s.openSongId)}</span> ${escapeHtml(s.title)}</h2>
       <p class="singer">${escapeHtml(s.singerName)}</p>
       ${s.youtubeVideoId
-        ? `<a class="yt" href="https://www.youtube.com/watch?v=${encodeURIComponent(s.youtubeVideoId)}">▶ Watch on YouTube</a>`
+        ? `<a class="thumb" href="https://www.youtube.com/watch?v=${encodeURIComponent(s.youtubeVideoId)}">
+        <img src="https://img.youtube.com/vi/${encodeURIComponent(s.youtubeVideoId)}/mqdefault.jpg" alt="▶ Watch on YouTube" loading="lazy" width="320" height="180">
+        <span class="play">▶</span>
+      </a>
+      <a class="yt" href="https://www.youtube.com/watch?v=${encodeURIComponent(s.youtubeVideoId)}">▶ Watch on YouTube</a>`
         : '<span class="yt none">No YouTube link</span>'}
       <div class="lyrics">${escapeHtml(s.lyrics)}</div>
       <a class="top" href="#top">↑ Back to list</a>
@@ -54,6 +59,10 @@ function buildSundayHtml(dateStr, songs) {
   .song { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
   .song h2 { font-size: 1.2rem; margin: 0; }
   .singer { color: var(--muted); margin: 2px 0 10px; }
+  .thumb { position: relative; display: block; max-width: 320px; aspect-ratio: 16 / 9; margin-bottom: 8px; border-radius: 8px; overflow: hidden; background: var(--line); }
+  .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; color: var(--muted); }
+  .thumb .play { position: absolute; inset: 0; margin: auto; width: 56px; height: 40px; border-radius: 10px; background: rgba(204, 0, 0, 0.9); color: #fff; font-size: 20px; display: flex; align-items: center; justify-content: center; }
+  .download { display: inline-block; margin: 0 0 16px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px; color: var(--link); text-decoration: none; font-weight: 600; }
   .yt { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 0.9rem; }
   .yt.none { background: transparent; color: var(--muted); padding: 0; font-weight: 400; }
   .lyrics { white-space: pre-line; font-size: 15pt; line-height: 1.6; margin-top: 14px; }
@@ -64,6 +73,7 @@ function buildSundayHtml(dateStr, songs) {
 <main id="top">
   <h1>Sunday Songs</h1>
   <p class="date">${escapeHtml(formatSundayDate(dateStr))} · ${songs.length} songs</p>
+  ${downloadUrl ? `<a class="download" href="${escapeHtml(downloadUrl)}" download>⬇ Download for offline</a>` : ''}
   <ol class="toc">${toc}
   </ol>${body}
 </main>

@@ -738,6 +738,7 @@ function upcomingSundays() {
       middleFrame.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
           <h2 style="margin:0;">🗓️ Sunday Songs</h2>
           <button class="copy-btn" id="shareSundayBtn" title="Copy a shareable link to this Sunday's songs">🔗 Share</button>
+          <button class="copy-btn" id="sundayLyricsPageBtn" title="Open all lyrics with YouTube links on one page (can be downloaded for offline use)">📄 Lyrics page</button>
         </div>
         <select id="sundayDateSelect" onchange="sundaySelectedDate = this.value; loadSundaySongsList();">${dateOptions}</select>
         ${isAdmin ? `<div class="sunday-add-song">
@@ -746,6 +747,7 @@ function upcomingSundays() {
         </div>` : ''}
         <div id="sundaySongsContainer" style="margin-top:10px;"><p class="comment-hint">Loading…</p></div>`;
       document.getElementById('shareSundayBtn').onclick = event => copyToClipboard(sundayShareLink(), event.currentTarget);
+      document.getElementById('sundayLyricsPageBtn').onclick = () => window.open(`/sunday/${encodeURIComponent(sundaySelectedDate)}`, '_blank');
       await loadSundaySongsList();
     }
 

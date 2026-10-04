@@ -769,6 +769,37 @@ app.post('/api/mezmurs/:id/export-drive', requirePermission('canExport'), async 
   }
 });
 
+// Public lyrics page for a Sunday's set (no sign-in), with YouTube thumbnails. Google Drive
+// only shows .html as source text, so this is the shareable link. ?download=1 serves the same
+// page as a file to keep for offline use. /sunday alone redirects to the nearest Sunday.
+app.get('/sunday', (req, res) => res.redirect(`/sunday/${nextSundayDate()}`));
+
+app.get('/sunday/:date', async (req, res) => {
+  const date = req.params.date;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(`${date}T00:00:00Z`).getTime())) {
+    return res.status(404).send('Unknown date');
+  }
+  try {
+    const rows = await db`
+      SELECT s.title, s.open_song_id, s.lyrics, s.youtube_video_id, sg.name AS singer_name
+      FROM sunday_songs ss
+      JOIN songs s ON s.id = ss.song_id
+      JOIN singers sg ON sg.id = s.singer_id
+      WHERE ss.sunday_date = ${date}
+      ORDER BY ss.position
+    `;
+    const html = buildSundayHtml(date, rows.map(r => ({
+      openSongId: r.open_song_id, title: r.title, singerName: r.singer_name, youtubeVideoId: r.youtube_video_id, lyrics: r.lyrics,
+    })), { downloadUrl: req.query.download ? undefined : `/sunday/${date}?download=1` });
+    res.set('Cache-Control', 'no-cache').type('html');
+    if (req.query.download) res.attachment(`Sunday-Songs-${date}.html`);
+    res.send(html);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Could not load the Sunday songs.');
+  }
+});
+
 // Admin-only: add a song directly to a specific upcoming Sunday's list (up to a month
 // out), for planning ahead rather than only ever adding to the nearest Sunday.
 app.post('/api/sunday-songs', requireAdmin, async (req, res) => {
