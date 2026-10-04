@@ -697,14 +697,15 @@ async function upsertDriveFile(drive, fileName, folderId, mimeType, body) {
   const existingId = await findDriveFile(drive, fileName, folderId);
   if (existingId) {
     await drive.files.update({ fileId: existingId, media: { mimeType, body }, supportsAllDrives: true });
-  } else {
-    await drive.files.create({
-      requestBody: { name: fileName, parents: [folderId] },
-      media: { mimeType, body },
-      supportsAllDrives: true,
-      fields: 'id',
-    });
+    return existingId;
   }
+  const created = await drive.files.create({
+    requestBody: { name: fileName, parents: [folderId] },
+    media: { mimeType, body },
+    supportsAllDrives: true,
+    fields: 'id',
+  });
+  return created.data.id;
 }
 
 async function regenerateSundaySetFile(drive, dateStr) {
@@ -726,7 +727,9 @@ async function regenerateSundaySetFile(drive, dateStr) {
     const html = buildSundayHtml(dateStr, rows.map(r => ({
       openSongId: r.open_song_id, title: r.title, singerName: r.singer_name, youtubeVideoId: r.youtube_video_id, lyrics: r.lyrics,
     })));
-    await upsertDriveFile(drive, `Sunday-Songs-${dateStr}.html`, folderId, 'text/html', html);
+    const htmlFileId = await upsertDriveFile(drive, `Sunday-Songs-${dateStr}.html`, folderId, 'text/html', html);
+    // Anyone with the link can open it - members shouldn't need Drive access to read lyrics.
+    await drive.permissions.create({ fileId: htmlFileId, requestBody: { type: 'anyone', role: 'reader' }, supportsAllDrives: true });
   } catch (err) {
     console.error(`Sunday HTML handout failed for ${dateStr}:`, err.message);
   }
