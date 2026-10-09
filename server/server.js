@@ -769,6 +769,36 @@ app.post('/api/mezmurs/:id/export-drive', requirePermission('canExport'), async 
   }
 });
 
+// Play Store closed-test recruitment: a public page where people leave the Gmail address of
+// their Android phone, which is emailed to the admin inbox to paste into the Play Console
+// tester list. Light per-IP limit since the endpoint is open to anyone.
+app.get('/testers', (req, res) => res.sendFile(path.join(__dirname, 'public', 'testers.html')));
+
+const testerSignupsByIp = new Map();
+app.post('/api/testers', async (req, res) => {
+  const email = (req.body?.email || '').toString().trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+  const now = Date.now();
+  const recent = (testerSignupsByIp.get(req.ip) || []).filter(t => now - t < 60 * 60 * 1000);
+  if (recent.length >= 5) return res.status(429).json({ error: 'Too many sign-ups from this device. Please try again later.' });
+  testerSignupsByIp.set(req.ip, [...recent, now]);
+  try {
+    await sendNotificationEmail(`New Mezmurify tester: ${email}`, [
+      `Email: ${email}`,
+      `Time: ${new Date().toISOString()}`,
+      '',
+      'Add it in Play Console: Testing > Closed testing > Testers > your email list > Save.',
+      'Then let them know they can open https://play.google.com/apps/testing/com.mezmur705.mobile',
+    ].join('\n'));
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Tester sign-up email failed:', err);
+    res.status(500).json({ error: 'Could not send right now. Please try again later.' });
+  }
+});
+
 // Public lyrics page for a Sunday's set (no sign-in), with YouTube thumbnails. Google Drive
 // only shows .html as source text, so this is the shareable link. ?download=1 serves the same
 // page as a file to keep for offline use. /sunday alone redirects to the nearest Sunday.
