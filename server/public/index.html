@@ -128,11 +128,6 @@
     .sunday-add-result { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px; cursor: pointer; border-radius: 4px; }
     .sunday-add-result:hover { background: #edf2f7; }
     .welcome-hero { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 15px; display: block; }
-    .singer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; margin-top: 10px; }
-    .singer-avatar-card { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px; border-radius: 8px; cursor: pointer; text-align: center; }
-    .singer-avatar-card:hover { background: #eef2ff; }
-    .singer-avatar-card img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
-    .singer-avatar-card span { font-size: 0.75rem; color: #2d3748; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
     .right-frame { width: 30%; border-right: none; background: #fafafa; }
     .youtube-container { width: 100%; height: 250px; background: #000; border-radius: 6px; overflow: hidden; margin-top: 10px; }
     .youtube-manual-row { display: flex; gap: 6px; margin-top: 4px; }
@@ -1012,29 +1007,6 @@ function upcomingSundays() {
       hideNowPlayingBar();
       const middleFrame = document.getElementById('middleFrame');
       middleFrame.innerHTML = WELCOME_HTML;
-      if (!mezmurData.length) return;
-      const heading = document.createElement('h3');
-      heading.style.cssText = 'margin:20px 0 10px; color:#4a5568; font-size:1rem;';
-      heading.innerText = 'Browse Singers';
-      const grid = document.createElement('div'); grid.className = 'singer-grid';
-      mezmurData.forEach(item => {
-        const card = document.createElement('div'); card.className = 'singer-avatar-card';
-        const img = document.createElement('img');
-        img.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.singer)}&size=96&background=random&color=fff&bold=true`;
-        img.alt = item.singer; img.loading = 'lazy';
-        const label = document.createElement('span'); label.innerText = item.singer;
-        card.appendChild(img); card.appendChild(label);
-        if (item.singerAmharic) {
-          const amharicLabel = document.createElement('span');
-          amharicLabel.style.cssText = 'opacity:0.7; font-size:0.7rem;';
-          amharicLabel.innerText = item.singerAmharic;
-          card.appendChild(amharicLabel);
-        }
-        card.onclick = () => displaySingerSongs(item.singer);
-        grid.appendChild(card);
-      });
-      middleFrame.appendChild(heading);
-      middleFrame.appendChild(grid);
     }
 
     let voiceRecognition = null;
