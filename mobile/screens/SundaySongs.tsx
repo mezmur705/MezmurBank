@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet, Share } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet, Share, Linking } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -40,6 +40,14 @@ export default function SundaySongs() {
   const handleShare = () => {
     if (!date) return;
     Share.share({ message: 'mezmurify://sunday', title: 'Sunday Songs' });
+  };
+
+  // Opens the server's ?download=1 link in the phone's browser, which saves the Sunday's
+  // lyrics as an HTML file that opens without internet - same as the website's button.
+  const handleDownload = () => {
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+    if (!date || !apiUrl) return;
+    Linking.openURL(`${apiUrl}/sunday/${date}?download=1`);
   };
 
   const load = useCallback(() => {
@@ -111,6 +119,12 @@ export default function SundaySongs() {
           <Text style={styles.playAllText}>Play All ({playableIds.length})</Text>
         </TouchableOpacity>
       ) : null}
+      {date && songs.length > 0 ? (
+        <TouchableOpacity style={styles.downloadButton} onPress={handleDownload} activeOpacity={0.7}>
+          <MaterialCommunityIcons name="download" size={20} color={colors.accent} />
+          <Text style={styles.downloadText}>Download Sunday Songs</Text>
+        </TouchableOpacity>
+      ) : null}
       <FlatList
         data={songs}
         keyExtractor={item => item.songId}
@@ -139,6 +153,19 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   playAllText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  downloadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 10,
+    borderRadius: 24,
+  },
+  downloadText: { color: colors.accent, fontWeight: '700', fontSize: 14 },
   listContent: { paddingVertical: 8, paddingBottom: 24 },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 14 },
   index: {
