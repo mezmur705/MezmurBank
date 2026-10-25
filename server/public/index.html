@@ -745,7 +745,18 @@ function upcomingSundays() {
         </div>` : ''}
         <div id="sundaySongsContainer" style="margin-top:10px;"><p class="comment-hint">Loading…</p></div>`;
       document.getElementById('shareSundayBtn').onclick = event => shareSunday(event.currentTarget);
-      document.getElementById('sundayLyricsPageBtn').onclick = () => { location.href = `/sunday/${encodeURIComponent(sundaySelectedDate)}?download=1`; };
+      // Browsers can't open a file they just downloaded, so also open the same page in a new
+      // tab - otherwise people have to hunt through their Downloads folder for it.
+      document.getElementById('sundayLyricsPageBtn').onclick = () => {
+        const pageUrl = `/sunday/${encodeURIComponent(sundaySelectedDate)}`;
+        const link = document.createElement('a');
+        link.href = `${pageUrl}?download=1`;
+        link.download = `Sunday-Songs-${sundaySelectedDate}.html`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.open(pageUrl, '_blank', 'noopener');
+      };
       await loadSundaySongsList();
     }
 

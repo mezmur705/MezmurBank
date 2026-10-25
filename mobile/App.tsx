@@ -15,6 +15,7 @@ import RecentlyViewed from './screens/RecentlyViewed';
 import Favorites from './screens/Favorites';
 import NewSongs from './screens/NewSongs';
 import SundaySongs from './screens/SundaySongs';
+import SundayOffline from './screens/SundayOffline';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -66,6 +67,7 @@ function RootNavigator() {
         <Stack.Screen name="Favorites" component={Favorites} options={{ title: 'Favorites' }} />
         <Stack.Screen name="NewSongs" component={NewSongs} options={{ title: 'New Songs' }} />
         <Stack.Screen name="SundaySongs" component={SundaySongs} options={{ title: 'Sunday Songs' }} />
+        <Stack.Screen name="SundayOffline" component={SundayOffline} options={{ title: 'Sunday Songs (downloaded)' }} />
       </Stack.Navigator>
       <SignInSheet visible={signInSheetVisible} onClose={dismissSignInSheet} />
     </NavigationContainer>

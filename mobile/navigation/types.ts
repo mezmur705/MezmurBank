@@ -8,4 +8,5 @@ export type RootStackParamList = {
   Favorites: undefined;
   NewSongs: undefined;
   SundaySongs: undefined;
+  SundayOffline: { date: string };
 };

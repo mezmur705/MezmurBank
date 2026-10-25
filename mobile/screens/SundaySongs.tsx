@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet, Share, Linking } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet, Share, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,6 +7,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { useLibrary } from '../context/LibraryContext';
 import { getSundaySongs } from '../lib/api';
 import type { SundaySong } from '../lib/api';
+import { saveSundayHtml, latestSavedSundayDate } from '../lib/sundayOffline';
 import { colors } from '../theme';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -23,6 +24,8 @@ export default function SundaySongs() {
   const [songs, setSongs] = useState<SundaySong[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [savedDate, setSavedDate] = useState<string | null>(null);
 
   // SundaySong itself doesn't carry youtube_video_id - cross-reference the full library.
   const playableIds = useMemo(() => {
@@ -42,12 +45,19 @@ export default function SundaySongs() {
     Share.share({ message: 'mezmurify://sunday', title: 'Sunday Songs' });
   };
 
-  // Opens the server's ?download=1 link in the phone's browser, which saves the Sunday's
-  // lyrics as an HTML file that opens without internet - same as the website's button.
-  const handleDownload = () => {
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-    if (!date || !apiUrl) return;
-    Linking.openURL(`${apiUrl}/sunday/${date}?download=1`);
+  // Saves the Sunday's lyrics handout inside the app and opens it straight away, so nobody
+  // has to look for the file afterwards. The saved copy also opens later without internet.
+  const handleDownload = async () => {
+    if (!date || downloading) return;
+    setDownloading(true);
+    try {
+      await saveSundayHtml(date);
+      navigation.navigate('SundayOffline', { date });
+    } catch (err) {
+      Alert.alert('Download failed', err instanceof Error ? err.message : 'Could not download the Sunday songs.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const load = useCallback(() => {
@@ -58,7 +68,14 @@ export default function SundaySongs() {
         setDate(data.date);
         setSongs(data.songs);
       })
-      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load Sunday songs'))
+      .catch(err => {
+        setError(err instanceof Error ? err.message : 'Failed to load Sunday songs');
+        try {
+          setSavedDate(latestSavedSundayDate());
+        } catch {
+          setSavedDate(null);
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -79,6 +96,15 @@ export default function SundaySongs() {
         <TouchableOpacity onPress={load} style={styles.retryButton}>
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
+        {savedDate ? (
+          <TouchableOpacity
+            onPress={() => navigation.navigate('SundayOffline', { date: savedDate })}
+            style={[styles.downloadButton, styles.offlineButton]}
+          >
+            <MaterialCommunityIcons name="file-document-outline" size={20} color={colors.accent} />
+            <Text style={styles.downloadText}>Open downloaded songs ({formatSundayDate(savedDate)})</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   }
@@ -120,8 +146,12 @@ export default function SundaySongs() {
         </TouchableOpacity>
       ) : null}
       {date && songs.length > 0 ? (
-        <TouchableOpacity style={styles.downloadButton} onPress={handleDownload} activeOpacity={0.7}>
-          <MaterialCommunityIcons name="download" size={20} color={colors.accent} />
+        <TouchableOpacity style={styles.downloadButton} onPress={handleDownload} activeOpacity={0.7} disabled={downloading}>
+          {downloading ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <MaterialCommunityIcons name="download" size={20} color={colors.accent} />
+          )}
           <Text style={styles.downloadText}>Download Sunday Songs</Text>
         </TouchableOpacity>
       ) : null}
@@ -166,6 +196,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   downloadText: { color: colors.accent, fontWeight: '700', fontSize: 14 },
+  offlineButton: { marginTop: 16, paddingHorizontal: 16, alignSelf: 'stretch' },
   listContent: { paddingVertical: 8, paddingBottom: 24 },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 14 },
   index: {
