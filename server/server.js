@@ -882,16 +882,23 @@ app.get('/api/sunday-songs', async (req, res) => {
 // Exporters (who build the Sunday list) may reorder too, but only the nearest Sunday's list -
 // planning further-out Sundays stays admin-only.
 app.put('/api/sunday-songs/order', requirePermission('canExport'), async (req, res) => {
+  // songIds: the new order. removeIds (optional): songs taken off this Sunday in the same
+  // save (position 0 in the order boxes). Together they must be exactly the current set.
   const songIds = Array.isArray(req.body?.songIds) ? req.body.songIds : [];
+  const removeIds = Array.isArray(req.body?.removeIds) ? req.body.removeIds : [];
   const date = isValidSundayWithinMonth(req.body?.date) ? req.body.date : nextSundayDate();
-  if (!songIds.length) return res.status(400).json({ error: 'songIds is required' });
+  if (!songIds.length && !removeIds.length) return res.status(400).json({ error: 'songIds is required' });
   try {
     const current = await db`SELECT song_id FROM sunday_songs WHERE sunday_date = ${date}`;
     const currentIds = new Set(current.map(r => r.song_id));
-    if (songIds.length !== currentIds.size || !songIds.every(id => currentIds.has(id))) {
+    const all = [...songIds, ...removeIds];
+    if (all.length !== currentIds.size || new Set(all).size !== all.length || !all.every(id => currentIds.has(id))) {
       return res.status(400).json({ error: 'songIds must match the current Sunday set exactly' });
     }
     await db.begin(async tx => {
+      for (const id of removeIds) {
+        await tx`DELETE FROM sunday_songs WHERE song_id = ${id} AND sunday_date = ${date}`;
+      }
       for (let i = 0; i < songIds.length; i++) {
         await tx`UPDATE sunday_songs SET position = ${i + 1} WHERE song_id = ${songIds[i]} AND sunday_date = ${date}`;
       }

@@ -119,7 +119,7 @@
     .sunday-song-singer { font-size: 0.78rem; color: #718096; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sunday-song-actions { display: flex; gap: 3px; flex-shrink: 0; }
     .sunday-order-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-    .sunday-pos-select { flex-shrink: 0; width: 52px; padding: 3px 2px; border: 1px solid #cbd5e0; border-radius: 4px; font-weight: 600; background: #fff; }
+    .sunday-pos-select { flex-shrink: 0; width: 58px; padding: 3px 2px; border: 1px solid #cbd5e0; border-radius: 4px; font-weight: 600; background: #fff; }
     .sunday-pos-select.changed { border: 2px solid #2b6cb0; }
     .sunday-song-actions button { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 0.8rem; line-height: 1.4; }
     .sunday-song-actions button:hover { background: #e2e8f0; }
@@ -879,12 +879,12 @@ function upcomingSundays() {
         : '';
       const orderBarHtml = canSort && items.length > 1
         ? `<div class="sunday-order-bar" id="sundayOrderBar">
-            <span class="comment-hint" id="sundayOrderHint">To reorder, pick a song's new number, then click Update order.</span>
+            <span class="comment-hint" id="sundayOrderHint">To reorder, pick a song's new number (0 removes it), then click Update order.</span>
             <button class="keyboard-btn" id="sundayUpdateOrderBtn" style="display:none; padding:5px 12px; font-size:0.85rem;">Update order</button>
             <button class="copy-btn" id="sundayCancelOrderBtn" style="display:none;">Cancel</button>
           </div>`
         : '';
-      const positionOptions = index => items.map((_, i) => `<option value="${i + 1}" ${i === index ? 'selected' : ''}>${i + 1}</option>`).join('');
+      const positionOptions = index => '<option value="0">0 ✕</option>' + items.map((_, i) => `<option value="${i + 1}" ${i === index ? 'selected' : ''}>${i + 1}</option>`).join('');
       container.innerHTML = playAllHtml + orderBarHtml + items.map((item, index) => `
         <div class="sunday-song-row">
           ${canSort && items.length > 1
@@ -926,17 +926,20 @@ function upcomingSundays() {
       const container = document.getElementById('sundaySongsContainer');
       if (!container) return;
       const songIds = JSON.parse(container.dataset.songIds || '[]');
-      const ranked = [...document.querySelectorAll('.sunday-pos-select')].map(sel => {
+      const picks = [...document.querySelectorAll('.sunday-pos-select')].map(sel => {
         const index = Number(sel.dataset.index);
         const picked = Number(sel.value);
         const rank = picked === index + 1 ? picked : picked < index + 1 ? picked - 0.5 : picked + 0.5;
-        return { songId: songIds[index], rank, index };
+        return { songId: songIds[index], picked, rank, index };
       });
-      ranked.sort((a, b) => a.rank - b.rank || a.index - b.index);
+      // 0 = take the song off this Sunday.
+      const removeIds = picks.filter(p => p.picked === 0).map(p => p.songId);
+      if (removeIds.length && !confirm(`Remove ${removeIds.length} song${removeIds.length > 1 ? 's' : ''} from this Sunday?`)) return;
+      const ranked = picks.filter(p => p.picked !== 0).sort((a, b) => a.rank - b.rank || a.index - b.index);
       const btn = document.getElementById('sundayUpdateOrderBtn');
       btn.disabled = true;
       btn.textContent = 'Saving…';
-      await saveSundaySongOrder(ranked.map(r => r.songId));
+      await saveSundaySongOrder(ranked.map(r => r.songId), removeIds);
       // On success the list is re-rendered; after a failed save, let them try again.
       if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = 'Update order'; }
     }
@@ -951,11 +954,11 @@ function upcomingSundays() {
       if (entry) displayLyric(entry.song, entry.singerName);
     }
 
-    async function saveSundaySongOrder(songIds) {
+    async function saveSundaySongOrder(songIds, removeIds = []) {
       try {
         const res = await fetch('/api/sunday-songs/order', {
           method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ songIds, date: sundaySelectedDate })
+          body: JSON.stringify({ songIds, removeIds, date: sundaySelectedDate })
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Could not reorder.');

@@ -51,10 +51,29 @@ export default function SundaySongs() {
   const orderChanged = Object.keys(orderInputs).length > 0;
 
   // Sorts by the typed numbers (untouched rows keep their current number); on a tie the
-  // song that was higher up stays first. Typing 1 on the last song moves it to the top.
-  const handleUpdateOrder = async () => {
+  // song that was higher up stays first. Typing 1 on the last song moves it to the top,
+  // and 0 takes a song off this Sunday (after a confirmation).
+  const handleUpdateOrder = () => {
     if (!date || !session || savingOrder) return;
-    const ranked = songs.map((item, index) => {
+    const removeIds = songs.filter(item => parseInt(orderInputs[item.songId] ?? '', 10) === 0).map(item => item.songId);
+    if (!removeIds.length) {
+      saveOrder(removeIds);
+      return;
+    }
+    Alert.alert(
+      'Remove songs?',
+      `Remove ${removeIds.length} song${removeIds.length > 1 ? 's' : ''} from this Sunday?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => saveOrder(removeIds) },
+      ]
+    );
+  };
+
+  const saveOrder = async (removeIds: string[]) => {
+    if (!date || !session) return;
+    const ranked = songs.filter(item => !removeIds.includes(item.songId)).map(item => {
+      const index = songs.indexOf(item);
       const typed = parseInt(orderInputs[item.songId] ?? '', 10);
       // A song moved up lands just before the one already at that number, a song moved
       // down just after it - so it ends up exactly at the typed position.
@@ -65,7 +84,7 @@ export default function SundaySongs() {
     const newOrder = ranked.map(r => r.item);
     setSavingOrder(true);
     try {
-      await saveSundayOrder(newOrder.map(s => s.songId), date, session.access_token);
+      await saveSundayOrder(newOrder.map(s => s.songId), date, session.access_token, removeIds);
       setSongs(newOrder);
       setOrderInputs({});
     } catch (err) {
@@ -160,13 +179,24 @@ export default function SundaySongs() {
     );
   }
 
-  const renderItem = ({ item, index }: { item: SundaySong; index: number }) => (
-    <TouchableOpacity
-      style={styles.row}
-      activeOpacity={0.6}
-      onPress={() => navigation.navigate('SongDetail', { songId: item.songId })}
-    >
-      {canOrder ? (
+  const songText = (item: SundaySong) => (
+    <View style={styles.rowText}>
+      <Text style={styles.title} numberOfLines={1}>
+        {item.title}
+      </Text>
+      <Text style={styles.singer} numberOfLines={1}>
+        {item.singer}
+      </Text>
+    </View>
+  );
+
+  const openSong = (item: SundaySong) => navigation.navigate('SongDetail', { songId: item.songId });
+
+  // With ordering on, only the title/singer opens the song - the number box and the blank
+  // gap next to it don't, so a slightly missed tap on the box doesn't open the lyrics.
+  const renderItem = ({ item, index }: { item: SundaySong; index: number }) =>
+    canOrder ? (
+      <View style={styles.row}>
         <TextInput
           style={[styles.orderInput, orderInputs[item.songId] !== undefined && styles.orderInputChanged]}
           value={orderInputs[item.songId] ?? String(index + 1)}
@@ -184,21 +214,19 @@ export default function SundaySongs() {
           selectTextOnFocus
           accessibilityLabel={`Position of ${item.title}`}
         />
-      ) : (
+        <View style={styles.orderGap} />
+        <TouchableOpacity style={styles.rowTextTouch} activeOpacity={0.6} onPress={() => openSong(item)}>
+          {songText(item)}
+        </TouchableOpacity>
+      </View>
+    ) : (
+      <TouchableOpacity style={styles.row} activeOpacity={0.6} onPress={() => openSong(item)}>
         <View style={styles.index}>
           <Text style={styles.indexText}>{index + 1}</Text>
         </View>
-      )}
-      <View style={styles.rowText}>
-        <Text style={styles.title} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text style={styles.singer} numberOfLines={1}>
-          {item.singer}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+        {songText(item)}
+      </TouchableOpacity>
+    );
 
   return (
     <View style={styles.container}>
@@ -260,7 +288,7 @@ export default function SundaySongs() {
             </TouchableOpacity>
           </View>
         ) : (
-          <Text style={styles.orderHint}>To reorder, type a song's new number, then tap Update order.</Text>
+          <Text style={styles.orderHint}>To reorder, type a song's new number (0 removes it), then tap Update order.</Text>
         )
       ) : null}
       <FlatList
@@ -331,18 +359,20 @@ const styles = StyleSheet.create({
   },
   indexText: { color: colors.textPrimary, fontWeight: '700', fontSize: 13 },
   orderInput: {
-    width: 40,
-    height: 36,
+    width: 46,
+    height: 40,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    color: colors.textPrimary,
+    borderColor: '#cbd5e0',
+    backgroundColor: '#ffffff',
+    color: '#1a202c',
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 16,
     textAlign: 'center',
     padding: 0,
   },
+  orderGap: { width: 18 },
+  rowTextTouch: { flex: 1, minWidth: 0, alignSelf: 'stretch', justifyContent: 'center' },
   orderInputChanged: { borderColor: colors.accent, borderWidth: 2 },
   orderHint: { color: colors.textSecondary, fontSize: 12, marginHorizontal: 16, marginTop: 10 },
   orderBar: { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 16, marginTop: 8 },

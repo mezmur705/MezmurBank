@@ -167,15 +167,20 @@ export async function getCanExport(accessToken: string): Promise<boolean> {
   }
 }
 
-// Saves a Sunday's song order (exporters and admins). songIds must be exactly that
-// Sunday's current songs, in the new order.
-export async function saveSundayOrder(songIds: string[], date: string, accessToken: string): Promise<void> {
+// Saves a Sunday's song order (exporters and admins). songIds (new order) plus removeIds
+// (taken off this Sunday) must be exactly that Sunday's current songs.
+export async function saveSundayOrder(
+  songIds: string[],
+  date: string,
+  accessToken: string,
+  removeIds: string[] = []
+): Promise<void> {
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
   const response = await fetch(`${apiUrl}/api/sunday-songs/order`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ songIds, date }),
+    body: JSON.stringify({ songIds, removeIds, date }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
