@@ -58,13 +58,16 @@ function buildSundayHtml(dateStr, songs, { downloadUrl } = {}) {
   .date { color: var(--muted); margin: 0 0 16px; }
   .num { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.85em; }
   .song { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; }
-  .song summary { list-style: none; cursor: pointer; padding: 12px 40px 12px 14px; position: relative; }
+  /* One line per song: number, title and singer side by side, cut short with "…" if too long. */
+  .song summary { list-style: none; cursor: pointer; padding: 10px 36px 10px 14px; position: relative; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
   .song summary::-webkit-details-marker { display: none; }
   .song summary::after { content: '▾'; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 1.2rem; }
   .song[open] summary::after { content: '▴'; }
   .song[open] summary { border-bottom: 1px solid var(--line); }
-  .song .title { display: block; font-size: 1.1rem; font-weight: 600; }
-  .song .singer { display: block; color: var(--muted); font-size: 0.9rem; }
+  .song .num { flex-shrink: 0; }
+  .song .title { font-size: 1.05rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .song .singer { color: var(--muted); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 2; }
+  .song .singer::before { content: '· '; }
   .content { padding: 14px; }
   .thumb { position: relative; display: block; max-width: 320px; aspect-ratio: 16 / 9; margin-bottom: 8px; border-radius: 8px; overflow: hidden; background: var(--line); }
   .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; color: var(--muted); }
