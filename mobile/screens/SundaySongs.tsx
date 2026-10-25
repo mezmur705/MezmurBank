@@ -38,11 +38,13 @@ export default function SundaySongs() {
     navigation.navigate('SongDetail', { songId: playableIds[0], queue: playableIds, queueIndex: 0 });
   };
 
-  // Uses the app's own mezmurify:// scheme (wired up via the linking config in
-  // App.tsx) so tapping the link opens this screen directly in the mobile app.
+  // Same as the website's share: the public lyrics page, which anyone can open in a
+  // browser without the app or signing in (a mezmurify:// link only works with the app).
   const handleShare = () => {
-    if (!date) return;
-    Share.share({ message: 'mezmurify://sunday', title: 'Sunday Songs' });
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+    if (!date || !apiUrl) return;
+    const url = `${apiUrl}/sunday/${date}`;
+    Share.share({ message: `Sunday Songs - ${formatSundayDate(date)}\n${url}`, title: 'Sunday Songs' });
   };
 
   // Saves the Sunday's lyrics handout inside the app and opens it straight away, so nobody
