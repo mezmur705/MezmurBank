@@ -1,24 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../navigation/types';
 import { readSundayHtml } from '../lib/sundayOffline';
 import { colors } from '../theme';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'SundayOffline'>;
-
 // Shows a downloaded Sunday Songs handout from the phone's storage, so it works offline.
-export default function SundayOffline({ route }: Props) {
-  const { date } = route.params;
+export default function SundayOffline() {
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    readSundayHtml(date)
+    readSundayHtml()
       .then(setHtml)
       .catch(() => setError('Could not open the downloaded Sunday songs.'));
-  }, [date]);
+  }, []);
 
   if (error) {
     return (

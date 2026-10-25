@@ -7,7 +7,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { useLibrary } from '../context/LibraryContext';
 import { getSundaySongs } from '../lib/api';
 import type { SundaySong } from '../lib/api';
-import { saveSundayHtml, latestSavedSundayDate } from '../lib/sundayOffline';
+import { saveSundayHtml, savedSundayDate } from '../lib/sundayOffline';
 import { colors } from '../theme';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -52,7 +52,7 @@ export default function SundaySongs() {
     setDownloading(true);
     try {
       await saveSundayHtml(date);
-      navigation.navigate('SundayOffline', { date });
+      navigation.navigate('SundayOffline');
     } catch (err) {
       Alert.alert('Download failed', err instanceof Error ? err.message : 'Could not download the Sunday songs.');
     } finally {
@@ -71,7 +71,7 @@ export default function SundaySongs() {
       .catch(err => {
         setError(err instanceof Error ? err.message : 'Failed to load Sunday songs');
         try {
-          setSavedDate(latestSavedSundayDate());
+          setSavedDate(savedSundayDate());
         } catch {
           setSavedDate(null);
         }
@@ -98,7 +98,7 @@ export default function SundaySongs() {
         </TouchableOpacity>
         {savedDate ? (
           <TouchableOpacity
-            onPress={() => navigation.navigate('SundayOffline', { date: savedDate })}
+            onPress={() => navigation.navigate('SundayOffline')}
             style={[styles.downloadButton, styles.offlineButton]}
           >
             <MaterialCommunityIcons name="file-document-outline" size={20} color={colors.accent} />
