@@ -222,6 +222,9 @@
     }
     /* Viewers who can't add a YouTube link don't need an empty video box. */
     body:not(.is-admin):not(.can-edit-songs) #youtubeSection.no-video { display: none; }
+    /* Editors keep the paste-a-link row, but nobody needs the empty black player box. */
+    #youtubeSection.no-video #youtubeContainer { display: none; }
+    #youtubeSection.no-video:has(#youtubeConfirmRow:empty) { display: none; }
     #middleFrame:focus { outline: none; }
     .mobile-back-link { display: none; color: #2b6cb0; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
     /* Sunday Songs replaces the middle frame on computers too, so its way back shows everywhere. */
