@@ -28,11 +28,6 @@ export default function HeaderMenu() {
     navigation.navigate('NewSongs');
   };
 
-  const goToDriveExports = () => {
-    setOpen(false);
-    navigation.navigate('DriveExports');
-  };
-
   const goToSundaySongs = () => {
     setOpen(false);
     navigation.navigate('SundaySongs');
@@ -46,10 +41,9 @@ export default function HeaderMenu() {
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
           <View style={styles.menu}>
+            <MenuItem icon="event" label="Sunday Songs" onPress={goToSundaySongs} />
             <MenuItem icon="favorite-border" label="Favorites" onPress={() => goToAccountScreen('Favorites')} />
             <MenuItem icon="fiber-new" label="New Songs" onPress={goToNewSongs} />
-            <MenuItem icon="event" label="Sunday Songs" onPress={goToSundaySongs} />
-            <MenuItem icon="folder-shared" label="Export to OpenSong" onPress={goToDriveExports} />
             <MenuItem icon="history" label="Recently Viewed" onPress={() => goToAccountScreen('RecentlyViewed')} />
             <View style={styles.divider} />
             {user ? (

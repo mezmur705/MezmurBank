@@ -96,13 +96,6 @@ export async function getRecentlyViewedSongIds(userId: string): Promise<string[]
   return (data ?? []).map(row => row.song_id as string);
 }
 
-export interface DriveExport {
-  id: string;
-  name: string;
-  webViewLink: string;
-  createdTime: string;
-}
-
 export interface SundaySong {
   songId: string;
   position: number;
@@ -140,15 +133,6 @@ export async function reactToSong(songId: string, type: ReactionType, remove = f
     const body = await response.json().catch(() => ({}));
     throw new Error(body?.error ?? 'Failed to save reaction.');
   }
-}
-
-export async function getDriveExports(): Promise<DriveExport[]> {
-  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-  if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
-  const response = await fetch(`${apiUrl}/api/drive-exports`);
-  const body = await response.json();
-  if (!response.ok) throw new Error(body?.error ?? 'Failed to load exported files.');
-  return body;
 }
 
 // Saves a song's YouTube video (accepts a pasted watch/embed/shorts/youtu.be link or a bare

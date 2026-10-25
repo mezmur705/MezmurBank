@@ -247,10 +247,9 @@
     </div>
     <div class="account-menu" id="accountMenu">
       <div class="account-menu-header" id="accountMenuHeader" style="display:none;"></div>
+      <div class="account-menu-item" onclick="showSundaySongsView()">🗓️ Sunday Songs</div>
       <div class="account-menu-item" onclick="showFavoritesView()">❤️ Favorites</div>
       <div class="account-menu-item" onclick="showNewSongsView()">🆕 New Songs</div>
-      <div class="account-menu-item" onclick="showSundaySongsView()">🗓️ Sunday Songs</div>
-      <div class="account-menu-item" onclick="showDriveExportsView()">📁 Export to OpenSong</div>
       <div class="account-menu-item" onclick="showRecentlyViewedView()">🕘 Recently Viewed</div>
       <div class="account-menu-divider admin-only"></div>
       <div class="account-menu-item admin-only" onclick="closeAccountMenu(); document.getElementById('songsFolder').click();">▣ Upload Songs Folder</div>
@@ -680,25 +679,6 @@
         document.getElementById('recentListContainer').innerHTML = `<p class="comment-hint">Could not load recently viewed songs: ${escapeHtml(err.message)}</p>`;
       }
     }
-    async function showDriveExportsView() {
-      closeAccountMenu();
-      hideNowPlayingBar();
-      const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = '<h2>📁 Export to OpenSong</h2><div id="driveExportsContainer" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
-      const container = document.getElementById('driveExportsContainer');
-      try {
-        const res = await fetch('/api/drive-exports');
-        const files = await res.json();
-        if (!res.ok) throw new Error(files.error || 'Failed to load exported files.');
-        if (!files.length) { container.innerHTML = '<p class="comment-hint">No files exported to Drive yet.</p>'; return; }
-        container.innerHTML = files
-          .map(f => `<div class="comment-item"><div class="comment-meta"><a href="${f.webViewLink}" target="_blank" rel="noopener" style="color:#2b6cb0; font-weight:600; text-decoration:none;">${escapeHtml(f.name)}</a><span>${new Date(f.createdTime).toLocaleString()}</span></div></div>`)
-          .join('');
-      } catch (err) {
-        container.innerHTML = `<p class="comment-hint">Could not load exported files: ${escapeHtml(err.message)}</p>`;
-      }
-    }
-
     function showNewSongsView() {
       closeAccountMenu();
       hideNowPlayingBar();
