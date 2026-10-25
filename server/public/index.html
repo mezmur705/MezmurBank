@@ -212,10 +212,11 @@
       .right-frame { display: contents; }
       #youtubeSection, #opensongSection { width: 100%; box-sizing: border-box; padding: 15px; background: #fafafa; border-bottom: 1px solid #e2e8f0; }
       #youtubeSection { order: -3; }
-      .middle-frame { order: -2; }
+      .middle-frame { order: -2; scroll-margin-top: 40px; }
       #opensongSection { order: -1; }
       .mobile-back-link { display: inline-block; }
     }
+    #middleFrame:focus { outline: none; }
     .mobile-back-link { display: none; color: #2b6cb0; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
     #nowPlayingBar { position: sticky; top: 0; z-index: 90; background: #1a365d; color: white; padding: 8px 20px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 2px 5px rgba(0,0,0,0.1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #nowPlayingBar .now-playing-singer { font-weight: 400; opacity: 0.8; }
@@ -262,7 +263,7 @@
       <h3>Singers</h3>
       <div id="singerNav"></div>
     </div>
-    <div class="frame middle-frame" id="middleFrame"></div>
+    <div class="frame middle-frame" id="middleFrame" tabindex="-1"></div>
     <div class="frame right-frame" id="rightFrame">
       <div id="youtubeSection">
         <div id="youtubeQueueBar" style="display:none; align-items:center; gap:10px; margin-bottom:6px; font-size:0.85rem;"></div>
@@ -736,7 +737,7 @@ function upcomingSundays() {
       const dateOptions = dates.map(d => `<option value="${d}" ${d === sundaySelectedDate ? 'selected' : ''}>${formatSundayDate(d)}</option>`).join('');
       middleFrame.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
           <h2 style="margin:0;">🗓️ Sunday Songs</h2>
-          <button class="copy-btn" id="shareSundayBtn" title="Copy a shareable link to this Sunday's songs">🔗 Share</button>
+          <button class="copy-btn" id="shareSundayBtn" title="Share this Sunday's songs" style="display:inline-flex; align-items:center; gap:4px;">${SHARE_ICON_SVG} Share</button>
           <button class="copy-btn" id="sundayLyricsPageBtn" title="Download all lyrics with YouTube links as one page for offline use" style="display:inline-flex; align-items:center; gap:4px;">${DOWNLOAD_ICON_SVG} Download Sunday Songs</button>
         </div>
         <select id="sundayDateSelect" onchange="sundaySelectedDate = this.value; loadSundaySongsList();">${dateOptions}</select>
@@ -745,13 +746,28 @@ function upcomingSundays() {
           <div id="sundayAddResults" class="sunday-add-results"></div>
         </div>` : ''}
         <div id="sundaySongsContainer" style="margin-top:10px;"><p class="comment-hint">Loading…</p></div>`;
-      document.getElementById('shareSundayBtn').onclick = event => copyToClipboard(sundayShareLink(), event.currentTarget);
+      document.getElementById('shareSundayBtn').onclick = event => shareSunday(event.currentTarget);
       document.getElementById('sundayLyricsPageBtn').onclick = () => { location.href = `/sunday/${encodeURIComponent(sundaySelectedDate)}?download=1`; };
       await loadSundaySongsList();
     }
 
+    // Links to the public lyrics page (thumbnails + lyrics, no sign-in) rather than the app view.
     function sundayShareLink() {
-      return `${location.origin}${location.pathname}?sunday=${encodeURIComponent(sundaySelectedDate)}`;
+      return `${location.origin}/sunday/${encodeURIComponent(sundaySelectedDate)}`;
+    }
+
+    async function shareSunday(btnEl) {
+      const url = sundayShareLink();
+      const text = `Sunday Songs - ${formatSundayDate(sundaySelectedDate)}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: 'Sunday Songs', text, url });
+          return;
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+        }
+      }
+      copyToClipboard(url, btnEl);
     }
 
     // Same share text as the mobile app's SongDetail handleShare.
@@ -997,7 +1013,7 @@ function upcomingSundays() {
       document.getElementById('exportPptxBtn').onclick = event => exportOpenSongToPptx(song, singerName, event.currentTarget);
       panel.style.display = 'block';
       panel.scrollTop = 0;
-      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!isMobileLayout()) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     function clearOpenSongFormat() {
       const panel = document.getElementById('openSongFormatPanel');
@@ -1135,7 +1151,7 @@ function upcomingSundays() {
           leafLi.dataset.songId = song.id;
           if (song.id === selectedSongId) leafLi.classList.add('selected');
           leafLi.innerHTML = `<span class="tree-icon">🎵</span><span class="tree-song-id">${formatOpenSongId(song.openSongId)}</span><span class="tree-label">${song.title}</span>${newBadge(song)}${mediaIcon(song)}`;
-          leafLi.onclick = event => { event.stopPropagation(); displayLyric(song, item.singer); leafLi.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+          leafLi.onclick = event => { event.stopPropagation(); displayLyric(song, item.singer); if (!isMobileLayout()) leafLi.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
           ul.appendChild(leafLi);
         });
         li.appendChild(nodeDiv); li.appendChild(ul); rootUl.appendChild(li);
@@ -1244,8 +1260,18 @@ function upcomingSundays() {
       loadEngagement(song.id);
       loadComments(song.id);
       middleFrame.scrollTop = 0;
-      window.scrollTo(0, 0);
+      if (isMobileLayout()) {
+        // Phones stack the frames (video, lyrics, ..., singer list last), so jump straight to
+        // the lyrics instead of the page top or the tapped entry in the singer list.
+        middleFrame.scrollIntoView({ block: 'start' });
+        middleFrame.focus({ preventScroll: true });
+      } else {
+        window.scrollTo(0, 0);
+      }
       loadYouTubeFrame(song, singerName);
+    }
+    function isMobileLayout() {
+      return window.matchMedia('(max-width: 900px)').matches;
     }
 
     // A Drive share link embeds as its own player (works for audio/video); anything else falls
