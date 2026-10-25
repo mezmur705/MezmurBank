@@ -118,6 +118,9 @@
     .sunday-song-title { font-weight: 600; color: #1a202c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sunday-song-singer { font-size: 0.78rem; color: #718096; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sunday-song-actions { display: flex; gap: 3px; flex-shrink: 0; }
+    .sunday-order-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    .sunday-pos-select { flex-shrink: 0; width: 52px; padding: 3px 2px; border: 1px solid #cbd5e0; border-radius: 4px; font-weight: 600; background: #fff; }
+    .sunday-pos-select.changed { border: 2px solid #2b6cb0; }
     .sunday-song-actions button { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 0.8rem; line-height: 1.4; }
     .sunday-song-actions button:hover { background: #e2e8f0; }
     .sunday-song-actions button:disabled { opacity: 0.35; cursor: default; }
@@ -874,8 +877,19 @@ function upcomingSundays() {
       const playAllHtml = playableCount
         ? `<button class="keyboard-btn" id="sundayPlayAllBtn" style="margin-bottom:10px; padding:5px 12px; font-size:0.85rem;">▶ Play All (${playableCount})</button>`
         : '';
-      container.innerHTML = playAllHtml + items.map((item, index) => `
+      const orderBarHtml = canSort && items.length > 1
+        ? `<div class="sunday-order-bar" id="sundayOrderBar">
+            <span class="comment-hint" id="sundayOrderHint">To reorder, pick a song's new number, then click Update order.</span>
+            <button class="keyboard-btn" id="sundayUpdateOrderBtn" style="display:none; padding:5px 12px; font-size:0.85rem;">Update order</button>
+            <button class="copy-btn" id="sundayCancelOrderBtn" style="display:none;">Cancel</button>
+          </div>`
+        : '';
+      const positionOptions = index => items.map((_, i) => `<option value="${i + 1}" ${i === index ? 'selected' : ''}>${i + 1}</option>`).join('');
+      container.innerHTML = playAllHtml + orderBarHtml + items.map((item, index) => `
         <div class="sunday-song-row">
+          ${canSort && items.length > 1
+            ? `<select class="sunday-pos-select" data-index="${index}" title="New position" onchange="onSundayPositionChange()">${positionOptions(index)}</select>`
+            : ''}
           ${item.youtubeVideoId
             ? `<img class="sunday-song-thumb" src="https://img.youtube.com/vi/${item.youtubeVideoId}/mqdefault.jpg" alt="" onclick='jumpToSongById(${JSON.stringify(item.songId)})'>`
             : ''}
@@ -883,15 +897,48 @@ function upcomingSundays() {
             <span class="sunday-song-title">${formatOpenSongId(item.openSongId)} ${escapeHtml(item.title)}</span>
             <span class="sunday-song-singer">${escapeHtml(item.singer)}</span>
           </div>
-          ${canSort ? `<div class="sunday-song-actions">
-            <button title="Move up" ${index === 0 ? 'disabled' : ''} onclick='moveSundaySong(${index}, -1)'>⬆️</button>
-            <button title="Move down" ${index === items.length - 1 ? 'disabled' : ''} onclick='moveSundaySong(${index}, 1)'>⬇️</button>
-            ${isAdmin ? `<button class="destructive" title="Remove from Sunday" onclick='removeSundaySong(${JSON.stringify(item.songId)})'>✕</button>` : ''}
+          ${isAdmin ? `<div class="sunday-song-actions">
+            <button class="destructive" title="Remove from Sunday" onclick='removeSundaySong(${JSON.stringify(item.songId)})'>✕</button>
           </div>` : ''}
         </div>
       `).join('');
       container.dataset.songIds = JSON.stringify(items.map(i => i.songId));
       if (playableCount) document.getElementById('sundayPlayAllBtn').onclick = () => startPlayAll(items.map(i => i.songId));
+      if (orderBarHtml) {
+        document.getElementById('sundayUpdateOrderBtn').onclick = updateSundayOrderFromSelects;
+        document.getElementById('sundayCancelOrderBtn').onclick = () => renderSundaySongsList(container, items);
+      }
+    }
+
+    // Shows Update order / Cancel once any number differs from the song's current place.
+    function onSundayPositionChange() {
+      const selects = [...document.querySelectorAll('.sunday-pos-select')];
+      const changed = selects.some(sel => Number(sel.value) !== Number(sel.dataset.index) + 1);
+      selects.forEach(sel => sel.classList.toggle('changed', Number(sel.value) !== Number(sel.dataset.index) + 1));
+      document.getElementById('sundayUpdateOrderBtn').style.display = changed ? '' : 'none';
+      document.getElementById('sundayCancelOrderBtn').style.display = changed ? '' : 'none';
+      document.getElementById('sundayOrderHint').style.display = changed ? 'none' : '';
+    }
+
+    // Same rule as the mobile app: a song moved up lands just before the one already at that
+    // number, a song moved down just after it; on a tie the song that was higher stays first.
+    async function updateSundayOrderFromSelects() {
+      const container = document.getElementById('sundaySongsContainer');
+      if (!container) return;
+      const songIds = JSON.parse(container.dataset.songIds || '[]');
+      const ranked = [...document.querySelectorAll('.sunday-pos-select')].map(sel => {
+        const index = Number(sel.dataset.index);
+        const picked = Number(sel.value);
+        const rank = picked === index + 1 ? picked : picked < index + 1 ? picked - 0.5 : picked + 0.5;
+        return { songId: songIds[index], rank, index };
+      });
+      ranked.sort((a, b) => a.rank - b.rank || a.index - b.index);
+      const btn = document.getElementById('sundayUpdateOrderBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      await saveSundaySongOrder(ranked.map(r => r.songId));
+      // On success the list is re-rendered; after a failed save, let them try again.
+      if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = 'Update order'; }
     }
 
     // Regular navigation (tree clicks, search results, favorites/sunday rows) always exits
@@ -902,16 +949,6 @@ function upcomingSundays() {
       playQueueIndex = 0;
       const entry = songIndex.get(songId);
       if (entry) displayLyric(entry.song, entry.singerName);
-    }
-
-    async function moveSundaySong(index, direction) {
-      const container = document.getElementById('sundaySongsContainer');
-      if (!container) return;
-      const songIds = JSON.parse(container.dataset.songIds || '[]');
-      const target = index + direction;
-      if (target < 0 || target >= songIds.length) return;
-      [songIds[index], songIds[target]] = [songIds[target], songIds[index]];
-      await saveSundaySongOrder(songIds);
     }
 
     async function saveSundaySongOrder(songIds) {
