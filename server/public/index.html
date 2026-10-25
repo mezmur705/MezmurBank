@@ -739,7 +739,7 @@ function upcomingSundays() {
           <button class="copy-btn" id="sundayLyricsPageBtn" title="Download all lyrics with YouTube links as one page for offline use" style="display:inline-flex; align-items:center; gap:4px;">${DOWNLOAD_ICON_SVG} Download Sunday Songs</button>
         </div>
         <select id="sundayDateSelect" onchange="sundaySelectedDate = this.value; loadSundaySongsList();">${dateOptions}</select>
-        ${isAdmin ? `<div class="sunday-add-song">
+        ${isAdmin || canExport ? `<div class="sunday-add-song">
           <input type="text" id="sundayAddSearch" placeholder="Search by title, singer, or OpenSongID…" oninput="renderSundayAddResults(this.value)">
           <div id="sundayAddResults" class="sunday-add-results"></div>
         </div>` : ''}
@@ -869,8 +869,8 @@ function upcomingSundays() {
     function renderSundaySongsList(container, items) {
       if (!items.length) { container.innerHTML = '<p class="comment-hint">No songs added for this Sunday yet.</p>'; return; }
       const playableCount = items.filter(i => i.youtubeVideoId).length;
-      // Exporters can sort the nearest Sunday's list (the one they add to); admins any date.
-      const canSort = isAdmin || (canExport && sundaySelectedDate === upcomingSundays()[0]);
+      // Exporters and admins can sort any Sunday within the next month (the ones they add to).
+      const canSort = isAdmin || canExport;
       const playAllHtml = playableCount
         ? `<button class="keyboard-btn" id="sundayPlayAllBtn" style="margin-bottom:10px; padding:5px 12px; font-size:0.85rem;">▶ Play All (${playableCount})</button>`
         : '';

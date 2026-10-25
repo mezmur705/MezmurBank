@@ -104,12 +104,12 @@ export interface SundaySong {
   singer: string;
 }
 
-// Read-only: mobile always shows the nearest upcoming Sunday's list. Planning further
-// ahead is an admin-only capability on the web app for now.
-export async function getSundaySongs(): Promise<{ date: string; songs: SundaySong[] }> {
+// date: a Sunday within the next month; omitted (or out of range) = the nearest Sunday.
+export async function getSundaySongs(date?: string): Promise<{ date: string; songs: SundaySong[] }> {
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
-  const response = await fetch(`${apiUrl}/api/sunday-songs`);
+  const query = date ? `?date=${encodeURIComponent(date)}` : '';
+  const response = await fetch(`${apiUrl}/api/sunday-songs${query}`);
   const body = await response.json();
   if (!response.ok) throw new Error(body?.error ?? 'Failed to load Sunday songs.');
   return body;
@@ -167,15 +167,35 @@ export async function getCanExport(accessToken: string): Promise<boolean> {
   }
 }
 
+// Saves a Sunday's song order (exporters and admins). songIds must be exactly that
+// Sunday's current songs, in the new order.
+export async function saveSundayOrder(songIds: string[], date: string, accessToken: string): Promise<void> {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
+  const response = await fetch(`${apiUrl}/api/sunday-songs/order`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ songIds, date }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error ?? 'Could not save the order.');
+  }
+}
+
+// sundayDate: which Sunday (within the next month) to add the song to; the server falls
+// back to the nearest Sunday when it's missing or out of range.
 export async function exportToDrive(
   songId: string,
-  accessToken: string
+  accessToken: string,
+  sundayDate?: string
 ): Promise<{ webViewLink: string; updated: boolean; sundayDate: string }> {
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
   const response = await fetch(`${apiUrl}/api/mezmurs/${encodeURIComponent(songId)}/export-drive`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date: sundayDate }),
   });
   const body = await response.json();
   if (!response.ok) throw new Error(body?.error ?? 'Export failed.');

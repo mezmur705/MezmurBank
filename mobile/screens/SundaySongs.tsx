@@ -1,21 +1,19 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet, Share, Alert } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet, Share, Alert, TextInput } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { useLibrary } from '../context/LibraryContext';
-import { getSundaySongs } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import { getSundaySongs, getCanExport, saveSundayOrder } from '../lib/api';
 import type { SundaySong } from '../lib/api';
 import { saveSundayHtml, savedSundayDate } from '../lib/sundayOffline';
+import { formatSundayDate } from '../lib/sundayDates';
+import SundayPicker from '../components/SundayPicker';
 import { colors } from '../theme';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
-
-function formatSundayDate(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00Z`);
-  return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
-}
 
 export default function SundaySongs() {
   const navigation = useNavigation<NavProp>();
@@ -26,6 +24,56 @@ export default function SundaySongs() {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [savedDate, setSavedDate] = useState<string | null>(null);
+  // null = the nearest Sunday (the server's default); otherwise a Sunday picked from the list.
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const { session } = useAuth();
+  const [canOrder, setCanOrder] = useState(false);
+  // Position typed in each row's box, by songId; only changed rows have an entry.
+  const [orderInputs, setOrderInputs] = useState<Record<string, string>>({});
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  // Users with Export to Drive rights (and admins) can reorder the list.
+  useEffect(() => {
+    if (!session) {
+      setCanOrder(false);
+      return;
+    }
+    let cancelled = false;
+    getCanExport(session.access_token).then(ok => {
+      if (!cancelled) setCanOrder(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token]);
+
+  const orderChanged = Object.keys(orderInputs).length > 0;
+
+  // Sorts by the typed numbers (untouched rows keep their current number); on a tie the
+  // song that was higher up stays first. Typing 1 on the last song moves it to the top.
+  const handleUpdateOrder = async () => {
+    if (!date || !session || savingOrder) return;
+    const ranked = songs.map((item, index) => {
+      const typed = parseInt(orderInputs[item.songId] ?? '', 10);
+      // A song moved up lands just before the one already at that number, a song moved
+      // down just after it - so it ends up exactly at the typed position.
+      const rank = Number.isNaN(typed) ? index + 1 : typed < index + 1 ? typed - 0.5 : typed + 0.5;
+      return { item, rank, index };
+    });
+    ranked.sort((a, b) => a.rank - b.rank || a.index - b.index);
+    const newOrder = ranked.map(r => r.item);
+    setSavingOrder(true);
+    try {
+      await saveSundayOrder(newOrder.map(s => s.songId), date, session.access_token);
+      setSongs(newOrder);
+      setOrderInputs({});
+    } catch (err) {
+      Alert.alert('Could not update the order', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setSavingOrder(false);
+    }
+  };
 
   // SundaySong itself doesn't carry youtube_video_id - cross-reference the full library.
   const playableIds = useMemo(() => {
@@ -65,10 +113,11 @@ export default function SundaySongs() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    getSundaySongs()
+    getSundaySongs(selectedDate ?? undefined)
       .then(data => {
         setDate(data.date);
         setSongs(data.songs);
+        setOrderInputs({});
       })
       .catch(err => {
         setError(err instanceof Error ? err.message : 'Failed to load Sunday songs');
@@ -79,7 +128,7 @@ export default function SundaySongs() {
         }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedDate]);
 
   useFocusEffect(load);
 
@@ -117,9 +166,29 @@ export default function SundaySongs() {
       activeOpacity={0.6}
       onPress={() => navigation.navigate('SongDetail', { songId: item.songId })}
     >
-      <View style={styles.index}>
-        <Text style={styles.indexText}>{index + 1}</Text>
-      </View>
+      {canOrder ? (
+        <TextInput
+          style={[styles.orderInput, orderInputs[item.songId] !== undefined && styles.orderInputChanged]}
+          value={orderInputs[item.songId] ?? String(index + 1)}
+          onChangeText={text => {
+            const digits = text.replace(/[^0-9]/g, '');
+            setOrderInputs(prev => {
+              const next = { ...prev };
+              if (digits === String(index + 1)) delete next[item.songId];
+              else next[item.songId] = digits;
+              return next;
+            });
+          }}
+          keyboardType="number-pad"
+          maxLength={2}
+          selectTextOnFocus
+          accessibilityLabel={`Position of ${item.title}`}
+        />
+      ) : (
+        <View style={styles.index}>
+          <Text style={styles.indexText}>{index + 1}</Text>
+        </View>
+      )}
       <View style={styles.rowText}>
         <Text style={styles.title} numberOfLines={1}>
           {item.title}
@@ -133,9 +202,27 @@ export default function SundaySongs() {
 
   return (
     <View style={styles.container}>
+      <SundayPicker
+        visible={pickerOpen}
+        title="Choose a Sunday"
+        selected={date}
+        onSelect={picked => {
+          setPickerOpen(false);
+          setSelectedDate(picked);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
       {date ? (
         <View style={styles.dateRow}>
-          <Text style={styles.dateHeader}>{formatSundayDate(date)}</Text>
+          <TouchableOpacity
+            style={styles.dateSelect}
+            onPress={() => setPickerOpen(true)}
+            activeOpacity={0.6}
+            accessibilityLabel="Choose a Sunday"
+          >
+            <Text style={styles.dateHeader} numberOfLines={1}>{formatSundayDate(date)}</Text>
+            <MaterialCommunityIcons name="chevron-down" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleShare} accessibilityLabel="Share this Sunday's songs">
             <MaterialCommunityIcons name="share-variant" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
@@ -157,7 +244,27 @@ export default function SundaySongs() {
           <Text style={styles.downloadText}>Download Sunday Songs</Text>
         </TouchableOpacity>
       ) : null}
+      {canOrder && songs.length > 1 ? (
+        orderChanged ? (
+          <View style={styles.orderBar}>
+            <TouchableOpacity style={styles.updateOrderButton} onPress={handleUpdateOrder} disabled={savingOrder} activeOpacity={0.7}>
+              {savingOrder ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <MaterialCommunityIcons name="sort-numeric-ascending" size={20} color="#fff" />
+              )}
+              <Text style={styles.playAllText}>Update order</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setOrderInputs({})} disabled={savingOrder} style={styles.cancelOrderButton}>
+              <Text style={styles.cancelOrderText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={styles.orderHint}>To reorder, type a song's new number, then tap Update order.</Text>
+        )
+      ) : null}
       <FlatList
+        keyboardShouldPersistTaps="handled"
         data={songs}
         keyExtractor={item => item.songId}
         renderItem={renderItem}
@@ -172,7 +279,20 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, padding: 24 },
   dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
-  dateHeader: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+  dateSelect: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    marginRight: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  dateHeader: { flexShrink: 1, fontSize: 14, fontWeight: '600', color: colors.textPrimary },
   playAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -210,6 +330,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   indexText: { color: colors.textPrimary, fontWeight: '700', fontSize: 13 },
+  orderInput: {
+    width: 40,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    color: colors.textPrimary,
+    fontWeight: '700',
+    fontSize: 14,
+    textAlign: 'center',
+    padding: 0,
+  },
+  orderInputChanged: { borderColor: colors.accent, borderWidth: 2 },
+  orderHint: { color: colors.textSecondary, fontSize: 12, marginHorizontal: 16, marginTop: 10 },
+  orderBar: { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 16, marginTop: 8 },
+  updateOrderButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    paddingVertical: 10,
+    borderRadius: 24,
+  },
+  cancelOrderButton: { paddingHorizontal: 12, paddingVertical: 10 },
+  cancelOrderText: { color: colors.textSecondary, fontWeight: '600' },
   rowText: { flex: 1, minWidth: 0 },
   title: { fontSize: 16, color: colors.textPrimary },
   singer: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },

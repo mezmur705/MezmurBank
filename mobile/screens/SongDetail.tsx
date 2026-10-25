@@ -21,6 +21,8 @@ import {
   type ReactionType,
 } from '../lib/api';
 import HighlightText from '../components/HighlightText';
+import SundayPicker from '../components/SundayPicker';
+import { formatSundayDate } from '../lib/sundayDates';
 import { colors } from '../theme';
 import type { Comment } from '../types/models';
 
@@ -95,6 +97,7 @@ export default function SongDetail({ route }: Props) {
   const [postingComment, setPostingComment] = useState(false);
   const [exportingDrive, setExportingDrive] = useState(false);
   const [canExport, setCanExport] = useState(false);
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!session) {
@@ -250,20 +253,30 @@ export default function SongDetail({ route }: Props) {
     }
   };
 
-  const handleExportToDrive = async () => {
+  // Export first asks which Sunday (within the next month) the song goes on.
+  const handleExportPress = () => {
+    if (!user || !session) {
+      promptSignIn();
+      return;
+    }
+    setExportPickerOpen(true);
+  };
+
+  const handleExportToDrive = async (targetSunday: string) => {
+    setExportPickerOpen(false);
     if (!user || !session) {
       promptSignIn();
       return;
     }
     setExportingDrive(true);
     try {
-      const { webViewLink, updated, sundayDate } = await exportToDrive(songId, session.access_token);
+      const { webViewLink, updated, sundayDate } = await exportToDrive(songId, session.access_token, targetSunday);
       const base = updated
         ? 'This song was already on Drive - the file was updated.'
         : 'The OpenSong-format file was saved to Drive.';
       Alert.alert(
         updated ? 'Already exported' : 'Exported',
-        sundayDate ? `${base} Added to the Sunday Songs list for ${sundayDate}.` : base,
+        sundayDate ? `${base} Added to the Sunday Songs list for ${formatSundayDate(sundayDate)}.` : base,
         [
           { text: 'Open', onPress: () => Linking.openURL(webViewLink) },
           { text: 'OK' },
@@ -327,6 +340,12 @@ export default function SongDetail({ route }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <SundayPicker
+        visible={exportPickerOpen}
+        title="Export and add to which Sunday?"
+        onSelect={handleExportToDrive}
+        onClose={() => setExportPickerOpen(false)}
+      />
       <View style={styles.titleRow}>
         <HighlightText text={song.title} query={query} style={styles.title} numberOfLines={1} ellipsizeMode="tail" />
         {isNew ? (
@@ -433,7 +452,7 @@ export default function SongDetail({ route }: Props) {
         </TouchableOpacity>
         {canExport && (
           <TouchableOpacity
-            onPress={handleExportToDrive}
+            onPress={handleExportPress}
             style={styles.shareButton}
             accessibilityLabel="Export to Drive"
             disabled={exportingDrive}

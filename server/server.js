@@ -680,8 +680,8 @@ function nextSundayDate(from = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
-// A signed-in user can add to the nearest upcoming Sunday's list; only an admin can
-// target a specific date further out, and only within the next month.
+// Anyone with export rights can add to the nearest upcoming Sunday's list or pick a Sunday
+// further out, but only within the next month.
 function isValidSundayWithinMonth(dateStr) {
   if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
   const d = new Date(`${dateStr}T00:00:00Z`);
@@ -745,12 +745,12 @@ app.post('/api/mezmurs/:id/export-drive', requirePermission('canExport'), async 
 
     // Adding to the Sunday set is best-effort - a failure here (e.g. a transient Drive
     // error) must not make the browser think the song file itself failed to export.
-    // Anyone allowed to export adds to the upcoming Sunday's list, any day of the week
-    // through that Sunday itself (nextSundayDate rolls over to the following week on Monday).
+    // Adds to the Sunday the exporter picked (within the next month), else the upcoming one -
+    // any day of the week through that Sunday itself (nextSundayDate rolls over on Monday).
     let sundayDate = null;
     let sundayError = null;
     try {
-      const targetDate = nextSundayDate();
+      const targetDate = isValidSundayWithinMonth(req.body?.date) ? req.body.date : nextSundayDate();
       const alreadyOnSunday = await db`SELECT 1 FROM sunday_songs WHERE song_id = ${req.params.id} AND sunday_date = ${targetDate}`;
       if (!alreadyOnSunday.length) {
         const [{ max_pos }] = await db`SELECT COALESCE(MAX(position), 0) AS max_pos FROM sunday_songs WHERE sunday_date = ${targetDate}`;
@@ -835,9 +835,9 @@ async function sendSundayPage(date, req, res) {
   }
 }
 
-// Admin-only: add a song directly to a specific upcoming Sunday's list (up to a month
-// out), for planning ahead rather than only ever adding to the nearest Sunday.
-app.post('/api/sunday-songs', requireAdmin, async (req, res) => {
+// Exporters and admins: add a song directly to a specific upcoming Sunday's list (up to a
+// month out), for planning ahead rather than only ever adding to the nearest Sunday.
+app.post('/api/sunday-songs', requirePermission('canExport'), async (req, res) => {
   const { songId, date } = req.body || {};
   if (!songId || !isValidSundayWithinMonth(date)) {
     return res.status(400).json({ error: 'songId and a Sunday date within the next month are required' });
@@ -883,7 +883,7 @@ app.get('/api/sunday-songs', async (req, res) => {
 // planning further-out Sundays stays admin-only.
 app.put('/api/sunday-songs/order', requirePermission('canExport'), async (req, res) => {
   const songIds = Array.isArray(req.body?.songIds) ? req.body.songIds : [];
-  const date = req.permissions.isAdmin && isValidSundayWithinMonth(req.body?.date) ? req.body.date : nextSundayDate();
+  const date = isValidSundayWithinMonth(req.body?.date) ? req.body.date : nextSundayDate();
   if (!songIds.length) return res.status(400).json({ error: 'songIds is required' });
   try {
     const current = await db`SELECT song_id FROM sunday_songs WHERE sunday_date = ${date}`;
