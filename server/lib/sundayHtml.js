@@ -30,7 +30,7 @@ function buildSundayHtml(dateStr, songs, { downloadUrl } = {}) {
       </summary>
       <div class="content">
       ${s.youtubeVideoId
-        ? `<a class="thumb" href="https://www.youtube.com/watch?v=${encodeURIComponent(s.youtubeVideoId)}">
+        ? `<a class="thumb" data-video-id="${encodeURIComponent(s.youtubeVideoId)}" href="https://www.youtube.com/watch?v=${encodeURIComponent(s.youtubeVideoId)}">
         <img src="https://img.youtube.com/vi/${encodeURIComponent(s.youtubeVideoId)}/mqdefault.jpg" alt="▶ Watch on YouTube" loading="lazy" width="320" height="180">
         <span class="play">▶</span>
       </a>
@@ -72,6 +72,9 @@ function buildSundayHtml(dateStr, songs, { downloadUrl } = {}) {
   .thumb { position: relative; display: block; max-width: 320px; aspect-ratio: 16 / 9; margin-bottom: 8px; border-radius: 8px; overflow: hidden; background: var(--line); }
   .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; color: var(--muted); }
   .thumb .play { position: absolute; inset: 0; margin: auto; width: 56px; height: 40px; border-radius: 10px; background: rgba(204, 0, 0, 0.9); color: #fff; font-size: 20px; display: flex; align-items: center; justify-content: center; }
+  /* Inline player: stays at the top of the screen while that song's lyrics scroll under it. */
+  .player { position: sticky; top: 0; z-index: 2; max-width: 560px; aspect-ratio: 16 / 9; margin-bottom: 8px; border-radius: 8px; overflow: hidden; background: #000; }
+  .player iframe { display: block; width: 100%; height: 100%; border: 0; }
   .download { display: inline-block; margin: 0 0 16px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px; color: var(--link); text-decoration: none; font-weight: 600; }
   .yt { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 0.9rem; }
   .yt.none { background: transparent; color: var(--muted); padding: 0; font-weight: 400; }
@@ -86,6 +89,27 @@ function buildSundayHtml(dateStr, songs, { downloadUrl } = {}) {
 ${body}
 </main>
 <script>
+  // Tapping a thumbnail plays the video right here (lyrics stay readable underneath) instead
+  // of leaving for YouTube. Closing the song puts the thumbnail back, which stops playback.
+  document.querySelectorAll('a.thumb[data-video-id]').forEach(function (thumb) {
+    thumb.addEventListener('click', function (event) {
+      event.preventDefault();
+      var player = document.createElement('div');
+      player.className = 'player';
+      player.innerHTML = '<iframe src="https://www.youtube.com/embed/' + thumb.dataset.videoId +
+        '?autoplay=1&playsinline=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>';
+      player._thumb = thumb;
+      thumb.replaceWith(player);
+    });
+  });
+  document.querySelectorAll('details.song').forEach(function (el) {
+    el.addEventListener('toggle', function () {
+      if (el.open) return;
+      var player = el.querySelector('.player');
+      if (player) player.replaceWith(player._thumb);
+    });
+  });
+
   // Bring an opened song to the top of the screen. Runs after the toggle, so the previously
   // open song (closed by the accordion) has already collapsed and the position is final.
   document.querySelectorAll('details.song').forEach(function (el) {

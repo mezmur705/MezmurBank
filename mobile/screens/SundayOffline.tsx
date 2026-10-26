@@ -4,6 +4,8 @@ import { WebView } from 'react-native-webview';
 import { readSundayHtml } from '../lib/sundayOffline';
 import { colors } from '../theme';
 
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://mezmurify.com';
+
 // Shows a downloaded Sunday Songs handout from the phone's storage, so it works offline.
 export default function SundayOffline() {
   const [html, setHtml] = useState<string | null>(null);
@@ -32,11 +34,18 @@ export default function SundayOffline() {
   return (
     <WebView
       originWhitelist={['*']}
-      source={{ html }}
+      // YouTube's embedded player refuses to play on a page without a web address, so the
+      // saved file is shown as if it came from the site.
+      source={{ html, baseUrl: BASE_URL }}
       style={styles.webview}
-      // YouTube links open in the YouTube app/browser instead of inside this viewer.
+      allowsInlineMediaPlayback
+      mediaPlaybackRequiresUserAction={false}
+      allowsFullscreenVideo
+      // The inline player (an iframe) loads inside the page; links the user taps, like
+      // "Watch on YouTube", open in the YouTube app/browser instead of inside this viewer.
       onShouldStartLoadWithRequest={request => {
-        if (/^https?:/.test(request.url)) {
+        if (request.isTopFrame === false) return true;
+        if (/^https?:/.test(request.url) && !request.url.startsWith(BASE_URL)) {
           Linking.openURL(request.url);
           return false;
         }
