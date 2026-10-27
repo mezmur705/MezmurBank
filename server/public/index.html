@@ -805,7 +805,9 @@ function upcomingSundays() {
       const text = songShareText(song, singerName);
       if (navigator.share) {
         try {
-          await navigator.share({ title: song.title, text });
+          // Text only, like the app: some share targets treat a separate title as the message
+          // and drop the text, losing the YouTube link and its thumbnail preview.
+          await navigator.share({ text });
           return;
         } catch (err) {
           if (err && err.name === 'AbortError') return;
@@ -1397,6 +1399,9 @@ function upcomingSundays() {
         const data = await res.json();
         if (data.videoId) {
           section.classList.remove('no-video');
+          // The library list can predate this video (found or saved since), so remember it
+          // here too - otherwise Share leaves out the YouTube link and its thumbnail preview.
+          song.youtubeVideoId = data.videoId;
           if (playQueue && youtubeApiReady) {
             container.innerHTML = '<div id="ytQueuePlayerMount" style="width:100%; height:100%;"></div>';
             ytQueuePlayer = new YT.Player('ytQueuePlayerMount', {
