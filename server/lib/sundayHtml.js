@@ -72,8 +72,8 @@ function buildSundayHtml(dateStr, songs, { downloadUrl } = {}) {
   .thumb { position: relative; display: block; max-width: 320px; aspect-ratio: 16 / 9; margin-bottom: 8px; border-radius: 8px; overflow: hidden; background: var(--line); }
   .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; color: var(--muted); }
   .thumb .play { position: absolute; inset: 0; margin: auto; width: 56px; height: 40px; border-radius: 10px; background: rgba(204, 0, 0, 0.9); color: #fff; font-size: 20px; display: flex; align-items: center; justify-content: center; }
-  /* Inline player: stays at the top of the screen while that song's lyrics scroll under it. */
-  .player { position: sticky; top: 0; z-index: 2; max-width: 560px; aspect-ratio: 16 / 9; margin-bottom: 8px; border-radius: 8px; overflow: hidden; background: #000; }
+  /* Inline player: shown only after tapping play, scrolls away with the lyrics. */
+  .player { max-width: 560px; aspect-ratio: 16 / 9; margin-bottom: 8px; border-radius: 8px; overflow: hidden; background: #000; }
   .player iframe { display: block; width: 100%; height: 100%; border: 0; }
   .download { display: inline-block; margin: 0 0 16px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px; color: var(--link); text-decoration: none; font-weight: 600; }
   .yt { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 0.9rem; }
