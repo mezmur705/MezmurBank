@@ -907,9 +907,13 @@ function parseRehearsal(body) {
   };
   const training = body?.saturdayTraining;
   const saturdayTraining = training === true || training === false ? training : null;
+  // Only web links (the day's YouTube livestream); anything else is dropped.
+  let link = text(body?.livestreamUrl, 500);
+  if (link && /^(www\.|youtu\.?be|m\.youtube)/i.test(link)) link = `https://${link}`; // pasted without https://
+  const livestreamUrl = link && /^https?:\/\//i.test(link) ? link : null;
   return {
     date, startTime, endTime, place: text(body?.place, 200), notes: text(body?.notes, 2000),
-    assignments, saturdayTraining, trainingReason: text(body?.trainingReason, 500),
+    assignments, saturdayTraining, trainingReason: text(body?.trainingReason, 500), livestreamUrl,
   };
 }
 
@@ -923,12 +927,13 @@ const rehearsalJson = r => ({
   assignments: r.assignments || {},
   saturdayTraining: r.saturday_training,
   trainingReason: r.training_reason,
+  livestreamUrl: r.livestream_url,
 });
 
 app.get('/api/choir-plan', requireSignedIn, async (req, res) => {
   try {
     const rows = await db`
-      SELECT id, rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason
+      SELECT id, rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason, livestream_url
       FROM choir_rehearsals
       WHERE rehearsal_date >= CURRENT_DATE
       ORDER BY rehearsal_date, start_time NULLS FIRST, id
@@ -1030,9 +1035,9 @@ app.post('/api/choir-plan', requirePermission('canExport'), async (req, res) => 
   if (r.error) return res.status(400).json({ error: r.error });
   try {
     const [row] = await db`
-      INSERT INTO choir_rehearsals (rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason, created_by)
-      VALUES (${r.date}, ${r.startTime}, ${r.endTime}, ${r.place}, ${r.notes}, ${db.json(r.assignments)}, ${r.saturdayTraining}, ${r.trainingReason}, ${req.permissions.email})
-      RETURNING id, rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason
+      INSERT INTO choir_rehearsals (rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason, livestream_url, created_by)
+      VALUES (${r.date}, ${r.startTime}, ${r.endTime}, ${r.place}, ${r.notes}, ${db.json(r.assignments)}, ${r.saturdayTraining}, ${r.trainingReason}, ${r.livestreamUrl}, ${req.permissions.email})
+      RETURNING id, rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason, livestream_url
     `;
     res.json(rehearsalJson(row));
   } catch (err) {
@@ -1048,9 +1053,10 @@ app.put('/api/choir-plan/:id', requirePermission('canExport'), async (req, res) 
     const rows = await db`
       UPDATE choir_rehearsals
       SET rehearsal_date = ${r.date}, start_time = ${r.startTime}, end_time = ${r.endTime}, place = ${r.place}, notes = ${r.notes},
-          assignments = ${db.json(r.assignments)}, saturday_training = ${r.saturdayTraining}, training_reason = ${r.trainingReason}
+          assignments = ${db.json(r.assignments)}, saturday_training = ${r.saturdayTraining}, training_reason = ${r.trainingReason},
+          livestream_url = ${r.livestreamUrl}
       WHERE id = ${Number(req.params.id) || 0}
-      RETURNING id, rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason
+      RETURNING id, rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason, livestream_url
     `;
     if (!rows.length) return res.status(404).json({ error: 'Rehearsal not found.' });
     res.json(rehearsalJson(rows[0]));

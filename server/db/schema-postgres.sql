@@ -155,6 +155,8 @@ alter table public.choir_members enable row level security;
 -- Whether Saturday training happens that week (null = not decided), with an optional reason.
 alter table public.choir_rehearsals add column if not exists saturday_training boolean;
 alter table public.choir_rehearsals add column if not exists training_reason text;
+-- YouTube livestream link for that day's service.
+alter table public.choir_rehearsals add column if not exists livestream_url text;
 
 -- What non-admin users may do, granted by email on the web app's Manage Access page.
 -- Only the API server reads/writes this (RLS on, no policies), so the list isn't exposed

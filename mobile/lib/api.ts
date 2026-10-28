@@ -246,6 +246,7 @@ export interface ChoirRehearsal {
   assignments: ChoirAssignments;
   saturdayTraining: boolean | null; // null = not decided
   trainingReason: string | null;
+  livestreamUrl: string | null; // YouTube livestream for that day
 }
 
 export type ChoirRehearsalInput = Omit<ChoirRehearsal, 'id'>;

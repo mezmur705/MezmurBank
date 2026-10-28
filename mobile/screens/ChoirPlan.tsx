@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -40,6 +40,20 @@ const PEOPLE_ROLES: [PeopleRole, string][] = [
 ];
 const emptyRoles = (): Record<PeopleRole, ChoirPerson[]> => ({ leadSinger: [], keyboard: [], guitar: [], solo: [] });
 
+// Usual team, preselected for new entries: both groups, Semret on guitar, Miki on keyboard
+// (matched by name in the choir member list, so it survives re-adding them).
+const DEFAULT_GROUPS: ('A' | 'B')[] = ['A', 'B'];
+const DEFAULT_PEOPLE: Partial<Record<PeopleRole, RegExp>> = { guitar: /ስምረት|simret|semret/i, keyboard: /ሚኪ|miki/i };
+const defaultRoles = (members: ChoirMember[]): Record<PeopleRole, ChoirPerson[]> => {
+  const roles = emptyRoles();
+  (Object.keys(DEFAULT_PEOPLE) as PeopleRole[]).forEach(key => {
+    roles[key] = members
+      .filter(m => DEFAULT_PEOPLE[key]!.test(m.name))
+      .map(m => ({ memberId: m.id, ...(m.email ? { email: m.email } : {}), name: m.name }));
+  });
+  return roles;
+};
+
 // 2026-11-08 -> 08/11/2026, like the printed plan.
 const shortDate = (date: string) => date.split('-').reverse().join('/');
 const groupText = (r: ChoirRehearsal) => (r.assignments?.singerGroup ?? []).join('+');
@@ -52,7 +66,7 @@ const saturdayText = (r: ChoirRehearsal) => {
   return details;
 };
 
-// Columns of the choir's printed plan (one row per Sunday), with widths for the scrolling table.
+// Activities of the choir's printed plan, in its column order.
 const PLAN_COLUMNS: { title: string; width: number; value: (r: ChoirRehearsal) => string }[] = [
   { title: 'የአምልኮ መሪ', width: 120, value: r => peopleText(r, 'leadSinger') },
   { title: 'የአምልኮ ቡድን', width: 80, value: groupText },
@@ -72,6 +86,9 @@ export default function ChoirPlan() {
   const [error, setError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<number | null>(null);
+  // Read inside the async member load, which can finish after an edit has started.
+  const editingIdRef = useRef<number | null>(null);
+  editingIdRef.current = editingId;
   const [date, setDate] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<string | null>(DEFAULT_START);
   const [endTime, setEndTime] = useState<string | null>(DEFAULT_END);
@@ -81,9 +98,10 @@ export default function ChoirPlan() {
   const [members, setMembers] = useState<ChoirMember[]>([]);
   const [roles, setRoles] = useState<Record<PeopleRole, ChoirPerson[]>>(emptyRoles());
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [groups, setGroups] = useState<('A' | 'B')[]>([]);
+  const [groups, setGroups] = useState<('A' | 'B')[]>(DEFAULT_GROUPS);
   const [training, setTraining] = useState<boolean | null>(null);
   const [trainingReason, setTrainingReason] = useState('');
+  const [livestreamUrl, setLivestreamUrl] = useState('');
   const [pickerRole, setPickerRole] = useState<PeopleRole | null>(null);
 
   const load = useCallback(() => {
@@ -97,7 +115,13 @@ export default function ChoirPlan() {
       .then(data => {
         setRehearsals(data.rehearsals);
         setCanEdit(data.canEdit);
-        getChoirMembers(session.access_token).then(setMembers).catch(() => setMembers([]));
+        getChoirMembers(session.access_token)
+          .then(list => {
+            setMembers(list);
+            // Fill the usual guitar/keyboard into a fresh (not being edited, untouched) form.
+            setRoles(prev => (editingIdRef.current === null && Object.values(prev).every(p => !p.length) ? defaultRoles(list) : prev));
+          })
+          .catch(() => setMembers([]));
       })
       .catch(err => setError(err instanceof Error ? err.message : 'Could not load the choir plan.'))
       .finally(() => setLoading(false));
@@ -112,10 +136,11 @@ export default function ChoirPlan() {
     setEndTime(DEFAULT_END);
     setPlace(DEFAULT_PLACE);
     setNotes('');
-    setRoles(emptyRoles());
-    setGroups([]);
+    setRoles(defaultRoles(members));
+    setGroups(DEFAULT_GROUPS);
     setTraining(null);
     setTrainingReason('');
+    setLivestreamUrl('');
   };
 
   const startEdit = (r: ChoirRehearsal) => {
@@ -134,6 +159,7 @@ export default function ChoirPlan() {
     setGroups(r.assignments?.singerGroup ?? []);
     setTraining(r.saturdayTraining);
     setTrainingReason(r.trainingReason ?? '');
+    setLivestreamUrl(r.livestreamUrl ?? '');
   };
 
   const toggleGroup = (g: 'A' | 'B') =>
@@ -187,6 +213,7 @@ export default function ChoirPlan() {
           assignments: { ...roles, singerGroup: groups },
           saturdayTraining: training,
           trainingReason: trainingReason.trim() || null,
+          livestreamUrl: livestreamUrl.trim() || null,
         },
         editingId ?? undefined
       );
@@ -217,6 +244,7 @@ export default function ChoirPlan() {
     add('ጊታር', peopleText(r, 'guitar'));
     add('የቅዳሜ ፀሎት', saturdayText(r));
     add('የሶሎ ዝማሬ ቀን', peopleText(r, 'solo'));
+    add('📺 የቀጥታ ስርጭት', r.livestreamUrl ?? '');
     if (r.notes) lines.push('', r.notes);
     lines.push('', `${process.env.EXPO_PUBLIC_API_URL ?? 'https://mezmurify.com'} → Choir Plan`);
     const text = encodeURIComponent(lines.join('\n').replace(/\n{3,}/g, '\n\n'));
@@ -350,6 +378,17 @@ export default function ChoirPlan() {
         maxLength={500}
       />
       <TextInput
+        style={styles.input}
+        value={livestreamUrl}
+        onChangeText={setLivestreamUrl}
+        placeholder="📺 የቀጥታ ስርጭት – YouTube link"
+        placeholderTextColor={colors.textTertiary}
+        keyboardType="url"
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={500}
+      />
+      <TextInput
         style={[styles.input, styles.notesInput]}
         value={notes}
         onChangeText={setNotes}
@@ -378,56 +417,53 @@ export default function ChoirPlan() {
   const isUsual = (r: ChoirRehearsal) =>
     r.startTime === DEFAULT_START && r.endTime === DEFAULT_END && (r.place ?? '') === DEFAULT_PLACE;
 
+  // Phones: one card per Sunday, the activities as a two-column table (label | who).
   const planTable = (
     <>
       <Text style={styles.planTitle}>የሙንሽን መዘምራን ሳምንታዊ የአምልኮ ፕሮግራም</Text>
       {rehearsals.length ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator>
-          <View style={styles.planTable}>
-            <View style={styles.planRow}>
-              <Text style={[styles.planCell, styles.planHead, { width: 100 }]}>የአምልኮው ቀን</Text>
-              {PLAN_COLUMNS.map(c => (
-                <Text key={c.title} style={[styles.planCell, styles.planHead, { width: c.width }]}>
-                  {c.title}
-                </Text>
-              ))}
-              <View style={[styles.planCell, { width: canEdit ? 112 : 44 }]} />
-            </View>
-            {rehearsals.map((r, index) => (
-              <View key={r.id} style={[styles.planRow, index % 2 === 1 && styles.planRowAlt]}>
-                <View style={[styles.planCell, { width: 100 }]}>
-                  <Text style={styles.planDate}>{shortDate(r.date)}</Text>
-                  {!isUsual(r) ? (
-                    <Text style={styles.planSub}>
-                      {[[r.startTime, r.endTime].filter(Boolean).join('–'), r.place].filter(Boolean).join(' · ')}
-                    </Text>
-                  ) : null}
-                  {r.notes ? <Text style={styles.planSub}>{r.notes}</Text> : null}
-                </View>
-                {PLAN_COLUMNS.map(c => (
-                  <Text key={c.title} style={[styles.planCell, styles.planValue, { width: c.width }]}>
-                    {c.value(r)}
-                  </Text>
-                ))}
-                <View style={[styles.planCell, styles.planActions, { width: canEdit ? 112 : 44 }]}>
-                  <TouchableOpacity onPress={() => sendToWhatsApp(r)} accessibilityLabel="Send to WhatsApp" style={styles.iconButton}>
-                    <MaterialCommunityIcons name="whatsapp" size={22} color="#25D366" />
-                  </TouchableOpacity>
-                  {canEdit ? (
-                    <>
-                      <TouchableOpacity onPress={() => startEdit(r)} accessibilityLabel="Edit ሳምንታዊ የአምልኮ ፕሮግራም" style={styles.iconButton}>
-                        <MaterialCommunityIcons name="pencil" size={20} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDelete(r)} accessibilityLabel="Delete ሳምንታዊ የአምልኮ ፕሮግራም" style={styles.iconButton}>
-                        <MaterialCommunityIcons name="delete-outline" size={20} color={colors.error} />
-                      </TouchableOpacity>
-                    </>
-                  ) : null}
-                </View>
+        rehearsals.map(r => (
+          <View key={r.id} style={styles.card}>
+            <View style={styles.cardHead}>
+              <Text style={styles.planDate}>{shortDate(r.date)}</Text>
+              <View style={styles.cardActions}>
+                <TouchableOpacity onPress={() => sendToWhatsApp(r)} accessibilityLabel="Send to WhatsApp" style={styles.iconButton}>
+                  <MaterialCommunityIcons name="whatsapp" size={22} color="#25D366" />
+                </TouchableOpacity>
+                {canEdit ? (
+                  <>
+                    <TouchableOpacity onPress={() => startEdit(r)} accessibilityLabel="Edit ሳምንታዊ የአምልኮ ፕሮግራም" style={styles.iconButton}>
+                      <MaterialCommunityIcons name="pencil" size={20} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDelete(r)} accessibilityLabel="Delete ሳምንታዊ የአምልኮ ፕሮግራም" style={styles.iconButton}>
+                      <MaterialCommunityIcons name="delete-outline" size={20} color={colors.error} />
+                    </TouchableOpacity>
+                  </>
+                ) : null}
               </View>
-            ))}
+            </View>
+            {!isUsual(r) ? (
+              <Text style={styles.planSub}>
+                {[[r.startTime, r.endTime].filter(Boolean).join('–'), r.place].filter(Boolean).join(' · ')}
+              </Text>
+            ) : null}
+            {r.notes ? <Text style={styles.planSub}>{r.notes}</Text> : null}
+            <View style={styles.table}>
+              {PLAN_COLUMNS.map((c, index) => (
+                <View key={c.title} style={[styles.tableRow, index > 0 && styles.tableRowBorder]}>
+                  <Text style={styles.tableLabel}>{c.title}</Text>
+                  <Text style={styles.tableValue}>{c.value(r) || '—'}</Text>
+                </View>
+              ))}
+            </View>
+            {r.livestreamUrl ? (
+              <TouchableOpacity style={styles.liveRow} onPress={() => Linking.openURL(r.livestreamUrl!)}>
+                <MaterialCommunityIcons name="youtube" size={22} color="#FF0000" />
+                <Text style={styles.liveText}>የቀጥታ ስርጭት</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
-        </ScrollView>
+        ))
       ) : (
         <Text style={styles.empty}>No ሳምንታዊ የአምልኮ ፕሮግራም planned yet.</Text>
       )}
@@ -456,7 +492,7 @@ export default function ChoirPlan() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, padding: 24 },
-  listContent: { padding: 16, paddingBottom: 32 },
+  listContent: { padding: 16, paddingBottom: 72 }, // room below the last row
   hint: { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' },
   errorText: { color: colors.error, marginBottom: 12, textAlign: 'center' },
   primaryButton: { backgroundColor: colors.accent, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, alignItems: 'center' },
@@ -523,6 +559,11 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   chipText: { color: colors.textPrimary, fontSize: 14 },
   chipTextOn: { color: colors.highlightText, fontWeight: '700' },
+  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  liveText: { color: colors.accent, fontWeight: '700', fontSize: 14 },
+  card: { backgroundColor: colors.surface, borderRadius: 10, padding: 12, marginBottom: 12 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cardActions: { flexDirection: 'row', alignItems: 'center' },
   planTitle: { color: '#E53E3E', fontSize: 17, fontWeight: '700', marginBottom: 8 },
   planTable: { borderWidth: 1, borderColor: colors.border },
   planRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -541,7 +582,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
     backgroundColor: colors.card,
-    color: colors.textSecondary,
+    color: '#E53E3E',
     fontWeight: '600',
     fontSize: 13,
   },

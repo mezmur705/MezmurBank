@@ -135,7 +135,18 @@
     .choir-members-table th { width: auto; }
     .choir-members-table select { padding: 2px 4px; }
     .choir-plan-title { color: #c53030; margin: 4px 0 8px; font-size: 1.15rem; }
-    .choir-plan-scroll { overflow-x: auto; }
+    .choir-plan-scroll { overflow-x: auto; margin-bottom: 3em; } /* room below the last row */
+    .choir-plan-cards { display: none; margin-bottom: 3em; }
+    .choir-card-live { margin-top: 6px; font-weight: 600; }
+    .choir-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+    .choir-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .choir-card .choir-roles-table { max-width: none; }
+    .choir-card .choir-roles-table th { color: #c53030; }
+    /* Phones: vertical cards instead of the wide table. */
+    @media (max-width: 900px) {
+      .choir-plan-scroll { display: none; }
+      .choir-plan-cards { display: block; }
+    }
     .choir-plan-table { border-collapse: collapse; font-size: 0.9rem; min-width: 720px; width: 100%; }
     .choir-plan-table th, .choir-plan-table td { border: 1px solid #a0aec0; padding: 6px 8px; vertical-align: top; text-align: left; }
     .choir-plan-table th { color: #c53030; background: #fff; font-weight: 700; }
@@ -733,6 +744,17 @@
     let choirCanEdit = false;
     // Usual rehearsal: 09:30-13:00 in Dachau - prefilled for new entries, still editable.
     const CHOIR_DEFAULTS = { start: '09:30', end: '13:00', place: 'Dachau' };
+    // Usual team, preselected for new entries: both groups, Semret on guitar, Miki on keyboard
+    // (matched by name in the choir member list, so it survives re-adding them).
+    const CHOIR_DEFAULT_PEOPLE = { guitar: /ስምረት|simret|semret/i, keyboard: /ሚኪ|miki/i };
+    function choirDefaultRoles() {
+      const roles = { singerGroup: ['A', 'B'] };
+      Object.entries(CHOIR_DEFAULT_PEOPLE).forEach(([key, pattern]) => {
+        roles[key] = choirMembers.filter(m => pattern.test(m.name))
+          .map(m => ({ memberId: m.id, ...(m.email ? { email: m.email } : {}), name: m.name }));
+      });
+      return roles;
+    }
     const CHOIR_PEOPLE_ROLES = [['leadSinger', 'የአምልኮ መሪ'], ['keyboard', 'የኪ-ቦርድ ተጫዋች'], ['guitar', 'ጊታር'], ['solo', 'የሶሎ ዝማሬ']];
     async function showChoirPlanView() {
       backToSundaySongs = false;
@@ -763,7 +785,7 @@
         const names = (a, key) => escapeHtml((a[key] || []).map(p => p.name).join(', '));
         list.innerHTML = `<h3 class="choir-plan-title">የሙንሽን መዘምራን ሳምንታዊ የአምልኮ ፕሮግራም</h3>
           <div class="choir-plan-scroll"><table class="choir-plan-table">
-            <tr><th>የአምልኮው ቀን</th><th>የአምልኮ መሪ</th><th>የአምልኮ ቡድን</th><th>የኪ-ቦርድ ተጫዋች</th><th>ጊታር</th><th>የቅዳሜ ፀሎት</th><th>የሶሎ ዝማሬ ቀን</th><th></th></tr>
+            <tr><th>የአምልኮው ቀን</th><th>የአምልኮ መሪ</th><th>የአምልኮ ቡድን</th><th>የኪ-ቦርድ ተጫዋች</th><th>ጊታር</th><th>የቅዳሜ ፀሎት</th><th>የሶሎ ዝማሬ ቀን</th><th>📺 የቀጥታ ስርጭት</th><th></th></tr>
             ${choirRehearsals.map(r => {
               const a = r.assignments || {};
               const time = [r.startTime, r.endTime].filter(Boolean).join('–');
@@ -778,6 +800,7 @@
                 <td>${names(a, 'guitar')}</td>
                 <td>${escapeHtml(choirSaturdayText(r))}</td>
                 <td>${names(a, 'solo')}</td>
+                <td>${choirLivestreamLink(r)}</td>
                 <td class="choir-plan-actions"><div class="sunday-song-actions">
                   <button class="choir-wa-btn" title="Send to WhatsApp" onclick="sendChoirRehearsalToWhatsApp(${r.id})">${WHATSAPP_ICON_SVG}</button>
                   ${data.canEdit ? `<button title="Edit" onclick="editChoirRehearsal(${r.id})">✏️</button>
@@ -785,7 +808,8 @@
                 </div></td>
               </tr>`;
             }).join('')}
-          </table></div>`;
+          </table></div>
+          <div class="choir-plan-cards">${choirRehearsals.map(r => choirPlanCardHtml(r, data.canEdit)).join('')}</div>`;
       } catch (err) {
         list.innerHTML = `<p class="comment-hint">${escapeHtml(err.message)}</p>`;
       }
@@ -813,6 +837,7 @@
             <label><input type="radio" name="choirTraining" value="no" onchange="toggleChoirReason()"> የለም</label>
           </div>
           <input type="text" id="choirTrainingReason" placeholder="የቅዳሜ ፀሎት – details (e.g. የቤተሰብ ፕሮግራም, ሚኪ 05-12-26)" maxlength="500">
+          <input type="url" id="choirLivestream" placeholder="📺 የቀጥታ ስርጭት – YouTube link" maxlength="500">
           <textarea id="choirNotes" rows="2" placeholder="Notes (songs to practice, what to bring…)" maxlength="2000"></textarea>
           <div style="display:flex; gap:8px;">
             <button class="keyboard-btn" id="choirSaveBtn" onclick="saveChoirRehearsal()">Add</button>
@@ -820,6 +845,7 @@
           </div>
         </div>`;
       renderChoirPickers();
+      resetChoirForm();
     }
 
     // Role pickers list the choir members; re-rendered when the member list changes, keeping
@@ -933,13 +959,14 @@
 
     function resetChoirForm() {
       choirPlanEditingId = null;
-      ['choirDate', 'choirNotes', 'choirTrainingReason'].forEach(id => { document.getElementById(id).value = ''; });
+      ['choirDate', 'choirNotes', 'choirTrainingReason', 'choirLivestream'].forEach(id => { document.getElementById(id).value = ''; });
       document.getElementById('choirStart').value = CHOIR_DEFAULTS.start;
       document.getElementById('choirEnd').value = CHOIR_DEFAULTS.end;
       document.getElementById('choirPlace').value = CHOIR_DEFAULTS.place;
-      setChoirFormRoles({});
-      document.getElementById('choirGroupA').checked = false;
-      document.getElementById('choirGroupB').checked = false;
+      const defaults = choirDefaultRoles();
+      setChoirFormRoles(defaults);
+      document.getElementById('choirGroupA').checked = defaults.singerGroup.includes('A');
+      document.getElementById('choirGroupB').checked = defaults.singerGroup.includes('B');
       document.querySelectorAll('input[name="choirTraining"]').forEach(el => { el.checked = false; });
       toggleChoirReason();
       document.getElementById('choirFormTitle').textContent = '➕ ሳምንታዊ የአምልኮ ፕሮግራም';
@@ -964,6 +991,7 @@
         el.checked = (el.value === 'yes' && r.saturdayTraining === true) || (el.value === 'no' && r.saturdayTraining === false);
       });
       document.getElementById('choirTrainingReason').value = r.trainingReason || '';
+      document.getElementById('choirLivestream').value = r.livestreamUrl || '';
       toggleChoirReason();
       document.getElementById('choirFormTitle').textContent = '✏️ ሳምንታዊ የአምልኮ ፕሮግራም';
       document.getElementById('choirSaveBtn').textContent = 'Save';
@@ -981,6 +1009,7 @@
         assignments: readChoirFormRoles(),
         saturdayTraining: choirTrainingValue(),
         trainingReason: document.getElementById('choirTrainingReason').value,
+        livestreamUrl: document.getElementById('choirLivestream').value.trim(),
       };
       if (!body.date) { alert('Please choose a date.'); return; }
       const btn = document.getElementById('choirSaveBtn');
@@ -1014,6 +1043,7 @@
       add('ጊታር', (a.guitar || []).map(p => p.name).join(', '));
       add('የቅዳሜ ፀሎት', choirSaturdayText(r));
       add('የሶሎ ዝማሬ ቀን', (a.solo || []).map(p => p.name).join(', '));
+      add('📺 የቀጥታ ስርጭት', r.livestreamUrl || '');
       if (r.notes) lines.push('', r.notes);
       lines.push('', `${location.origin} → Choir Plan`);
       return lines.join('\n');
@@ -1026,6 +1056,44 @@
       const r = choirRehearsals.find(item => item.id === id);
       if (!r) return;
       window.open(`https://wa.me/?text=${encodeURIComponent(choirRehearsalText(r))}`, '_blank', 'noopener');
+    }
+
+    // Phone layout: one card per Sunday with the activities as a two-column table.
+    function choirPlanCardHtml(r, canEdit) {
+      const a = r.assignments || {};
+      const names = key => (a[key] || []).map(p => p.name).join(', ');
+      const time = [r.startTime, r.endTime].filter(Boolean).join('–');
+      const unusual = time !== `${CHOIR_DEFAULTS.start}–${CHOIR_DEFAULTS.end}` || (r.place || '') !== CHOIR_DEFAULTS.place;
+      const rows = [
+        ['የአምልኮ መሪ', names('leadSinger')],
+        ['የአምልኮ ቡድን', choirGroupText(a)],
+        ['የኪ-ቦርድ ተጫዋች', names('keyboard')],
+        ['ጊታር', names('guitar')],
+        ['የቅዳሜ ፀሎት', choirSaturdayText(r)],
+        ['የሶሎ ዝማሬ ቀን', names('solo')],
+      ];
+      return `<div class="choir-card">
+        <div class="choir-card-head">
+          <span class="choir-plan-date">${choirShortDate(r.date)}</span>
+          <div class="sunday-song-actions">
+            <button class="choir-wa-btn" title="Send to WhatsApp" onclick="sendChoirRehearsalToWhatsApp(${r.id})">${WHATSAPP_ICON_SVG}</button>
+            ${canEdit ? `<button title="Edit" onclick="editChoirRehearsal(${r.id})">✏️</button>
+            <button class="destructive" title="Delete" onclick="deleteChoirRehearsal(${r.id})">✕</button>` : ''}
+          </div>
+        </div>
+        ${unusual ? `<div class="choir-plan-sub">${escapeHtml([time, r.place].filter(Boolean).join(' · '))}</div>` : ''}
+        ${r.notes ? `<div class="choir-plan-sub">${escapeHtml(r.notes)}</div>` : ''}
+        <table class="choir-roles-table">${rows
+          .map(([label, value]) => `<tr><th>${label}</th><td>${value ? escapeHtml(value) : '—'}</td></tr>`)
+          .join('')}</table>
+        ${r.livestreamUrl ? `<div class="choir-card-live">📺 የቀጥታ ስርጭት: ${choirLivestreamLink(r)}</div>` : ''}
+      </div>`;
+    }
+
+    function choirLivestreamLink(r) {
+      return r.livestreamUrl
+        ? `<a href="${escapeHtml(r.livestreamUrl)}" target="_blank" rel="noopener noreferrer">▶ YouTube</a>`
+        : '';
     }
 
     // 2026-11-08 -> 08/11/2026, like the printed plan.
