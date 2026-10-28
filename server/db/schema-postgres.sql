@@ -140,6 +140,17 @@ create index if not exists ix_choir_rehearsals_date on public.choir_rehearsals(r
 alter table public.choir_rehearsals enable row level security;
 -- Who serves: { leadSinger: [{email,name}], keyboard: [...], guitar: [...], singerGroup: ['A','B'] }.
 alter table public.choir_rehearsals add column if not exists assignments jsonb not null default '{}'::jsonb;
+-- Choir member list: who the roles are picked from. A member is either a Mezmurify sign-in
+-- user (email set) or just a typed name; singer_group is Group A or B.
+create table if not exists public.choir_members (
+    id serial primary key,
+    name text not null,
+    email text,
+    singer_group text check (singer_group in ('A', 'B')),
+    created_at timestamptz not null default now()
+);
+create unique index if not exists ux_choir_members_email on public.choir_members(lower(email)) where email is not null;
+alter table public.choir_members enable row level security;
 -- Whether Saturday training happens that week (null = not decided), with an optional reason.
 alter table public.choir_rehearsals add column if not exists saturday_training boolean;
 alter table public.choir_rehearsals add column if not exists training_reason text;

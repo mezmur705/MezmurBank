@@ -887,11 +887,16 @@ function parseRehearsal(body) {
   const endTime = time(body?.endTime);
   if (startTime === undefined || endTime === undefined) return { error: 'Times must look like 18:30.' };
   const text = (value, max) => ((value || '').toString().trim().slice(0, max) || null);
-  // People roles hold sign-in users ({ email, name }); the singer group is Group A and/or B.
+  // People roles hold choir members ({ memberId, email?, name }; older entries only have an
+  // email); the singer group is Group A and/or B.
   const people = list => (Array.isArray(list) ? list : [])
-    .filter(p => p && typeof p.email === 'string' && p.email)
+    .filter(p => p && (Number.isInteger(p.memberId) || (typeof p.email === 'string' && p.email)) && p.name)
     .slice(0, 30)
-    .map(p => ({ email: p.email.toLowerCase().slice(0, 200), name: (p.name || p.email).toString().slice(0, 200) }));
+    .map(p => ({
+      ...(Number.isInteger(p.memberId) ? { memberId: p.memberId } : {}),
+      ...(typeof p.email === 'string' && p.email ? { email: p.email.toLowerCase().slice(0, 200) } : {}),
+      name: p.name.toString().slice(0, 200),
+    }));
   const a = body?.assignments || {};
   const assignments = {
     leadSinger: people(a.leadSinger),
@@ -934,8 +939,75 @@ app.get('/api/choir-plan', requireSignedIn, async (req, res) => {
   }
 });
 
-// Sign-in names to choose Lead Singer / Keyboard / Guitar from (planners only).
-app.get('/api/choir-plan/members', requirePermission('canExport'), async (req, res) => {
+const choirMemberJson = r => ({ id: r.id, name: r.name, email: r.email, group: r.singer_group });
+
+// The choir member list (who the roles are picked from) - visible to signed-in users.
+app.get('/api/choir-plan/members', requireSignedIn, async (req, res) => {
+  try {
+    const rows = await db`SELECT id, name, email, singer_group FROM choir_members ORDER BY lower(name)`;
+    res.json(rows.map(choirMemberJson));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function parseChoirMember(body) {
+  const name = (body?.name || '').toString().trim().slice(0, 200);
+  if (!name) return { error: 'Please enter a name.' };
+  const email = (body?.email || '').toString().trim().toLowerCase().slice(0, 200) || null;
+  const group = body?.group === 'A' || body?.group === 'B' ? body.group : null;
+  return { name, email, group };
+}
+
+app.post('/api/choir-plan/members', requirePermission('canExport'), async (req, res) => {
+  const m = parseChoirMember(req.body);
+  if (m.error) return res.status(400).json({ error: m.error });
+  try {
+    if (m.email) {
+      const existing = await db`SELECT 1 FROM choir_members WHERE lower(email) = ${m.email}`;
+      if (existing.length) return res.status(409).json({ error: 'This person is already a choir member.' });
+    }
+    const [row] = await db`
+      INSERT INTO choir_members (name, email, singer_group) VALUES (${m.name}, ${m.email}, ${m.group})
+      RETURNING id, name, email, singer_group
+    `;
+    res.json(choirMemberJson(row));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/choir-plan/members/:id', requirePermission('canExport'), async (req, res) => {
+  const m = parseChoirMember(req.body);
+  if (m.error) return res.status(400).json({ error: m.error });
+  try {
+    const rows = await db`
+      UPDATE choir_members SET name = ${m.name}, email = ${m.email}, singer_group = ${m.group}
+      WHERE id = ${Number(req.params.id) || 0}
+      RETURNING id, name, email, singer_group
+    `;
+    if (!rows.length) return res.status(404).json({ error: 'Member not found.' });
+    res.json(choirMemberJson(rows[0]));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/choir-plan/members/:id', requirePermission('canExport'), async (req, res) => {
+  try {
+    await db`DELETE FROM choir_members WHERE id = ${Number(req.params.id) || 0}`;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mezmurify sign-in names, for adding someone with an account to the member list (planners only).
+app.get('/api/choir-plan/users', requirePermission('canExport'), async (req, res) => {
   try {
     const rows = await db`
       SELECT lower(u.email) AS email,

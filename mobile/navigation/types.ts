@@ -10,4 +10,5 @@ export type RootStackParamList = {
   SundaySongs: undefined;
   SundayOffline: undefined;
   ChoirPlan: undefined;
+  ChoirMembers: undefined;
 };

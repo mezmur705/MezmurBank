@@ -130,8 +130,14 @@
     .choir-picked { color: #2b6cb0; font-weight: 600; }
     .choir-picker-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; margin-top: 6px; font-size: 0.9rem; }
     .choir-form-inline { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.9rem; }
+    .choir-members { margin-top: 10px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; }
+    .choir-members summary { cursor: pointer; font-weight: 600; color: #2b6cb0; }
+    .choir-members-table th { width: auto; }
+    .choir-members-table select { padding: 2px 4px; }
     .choir-wa-btn { color: #25d366; display: inline-flex; align-items: center; }
-    .choir-item-roles { font-size: 0.9rem; margin-top: 4px; display: flex; flex-direction: column; gap: 1px; }
+    .choir-roles-table { border-collapse: collapse; margin-top: 6px; font-size: 0.9rem; width: 100%; max-width: 520px; }
+    .choir-roles-table th, .choir-roles-table td { border: 1px solid #e2e8f0; padding: 4px 8px; text-align: left; vertical-align: top; }
+    .choir-roles-table th { width: 40%; background: #f7fafc; color: #4a5568; font-weight: 600; white-space: nowrap; }
     .choir-item-notes { white-space: pre-line; font-size: 0.9rem; margin-top: 4px; }
     .sunday-order-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
     .sunday-pos-select { flex-shrink: 0; width: 58px; padding: 3px 2px; border: 1px solid #cbd5e0; border-radius: 4px; font-weight: 600; background: #fff; }
@@ -709,7 +715,11 @@
     let choirPlanEditingId = null;
     let choirRehearsals = [];
     let choirMembers = [];
-    const CHOIR_PEOPLE_ROLES = [['leadSinger', 'Lead Singer'], ['keyboard', 'Keyboard'], ['guitar', 'Guitar']];
+    let choirUsers = [];
+    let choirCanEdit = false;
+    // Usual rehearsal: 09:30-13:00 in Dachau - prefilled for new entries, still editable.
+    const CHOIR_DEFAULTS = { start: '09:30', end: '13:00', place: 'Dachau' };
+    const CHOIR_PEOPLE_ROLES = [['leadSinger', 'መሪ ዘማሪ'], ['keyboard', 'ኪቦርድ'], ['guitar', 'ጊታር']];
     async function showChoirPlanView() {
       backToSundaySongs = false;
       closeAccountMenu();
@@ -717,7 +727,7 @@
       if (!currentUser) { promptSignIn(); return; }
       choirPlanEditingId = null;
       const middleFrame = document.getElementById('middleFrame');
-      middleFrame.innerHTML = '<h2>🎶 Choir Plan</h2><div id="choirPlanForm"></div><div id="choirPlanList" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
+      middleFrame.innerHTML = '<h2>🎶 Choir Plan</h2><div id="choirPlanForm"></div><div id="choirMembersSection"></div><div id="choirPlanList" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
       await loadChoirPlan();
     }
 
@@ -728,9 +738,11 @@
         const res = await fetch('/api/choir-plan', { headers: authHeaders() });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Could not load the choir plan.');
+        choirCanEdit = data.canEdit;
+        await loadChoirMembers();
         renderChoirPlanForm(data.canEdit);
         choirRehearsals = data.rehearsals;
-        if (!choirRehearsals.length) { list.innerHTML = '<p class="comment-hint">No upcoming rehearsals planned yet.</p>'; return; }
+        if (!choirRehearsals.length) { list.innerHTML = '<p class="comment-hint">No ሳምንታዊ የአምልኮ ፕሮግራም planned yet.</p>'; return; }
         list.innerHTML = choirRehearsals.map(r => {
           const time = [r.startTime, r.endTime].filter(Boolean).join(' – ');
           return `<div class="choir-item">
@@ -758,29 +770,22 @@
       const form = document.getElementById('choirPlanForm');
       if (!form || !canEdit || form.dataset.ready) return;
       form.dataset.ready = '1';
-      try {
-        const res = await fetch('/api/choir-plan/members', { headers: authHeaders() });
-        if (res.ok) choirMembers = await res.json();
-      } catch (err) { /* form still works without names */ }
       form.innerHTML = `<div class="choir-form">
-          <h4 id="choirFormTitle" style="margin:0;">Add a rehearsal</h4>
+          <h4 id="choirFormTitle" style="margin:0;">➕ ሳምንታዊ የአምልኮ ፕሮግራም</h4>
           <div class="choir-form-row">
             <label>Date <input type="date" id="choirDate"></label>
-            <label>From <input type="time" id="choirStart"></label>
-            <label>To <input type="time" id="choirEnd"></label>
+            <label>From <input type="time" id="choirStart" value="${CHOIR_DEFAULTS.start}"></label>
+            <label>To <input type="time" id="choirEnd" value="${CHOIR_DEFAULTS.end}"></label>
           </div>
-          <input type="text" id="choirPlace" placeholder="Place (e.g. church hall)" maxlength="200">
-          ${CHOIR_PEOPLE_ROLES.map(([key, label]) => `<details class="choir-picker" id="choirPick_${key}">
-            <summary>${label}: <span class="choir-picked">—</span></summary>
-            <div class="choir-picker-list">${choirMembers.map(m => `<label><input type="checkbox" value="${escapeHtml(m.email)}" data-name="${escapeHtml(m.name)}" onchange="updateChoirPickerSummary('${key}')"> ${escapeHtml(m.name)}</label>`).join('')}</div>
-          </details>`).join('')}
-          <div class="choir-form-inline"><span>Singer Group:</span>
-            <label><input type="checkbox" id="choirGroupA"> Group A</label>
-            <label><input type="checkbox" id="choirGroupB"> Group B</label>
+          <input type="text" id="choirPlace" placeholder="Place" maxlength="200" value="${CHOIR_DEFAULTS.place}">
+          <div id="choirPickers"></div>
+          <div class="choir-form-inline"><span>የዘማሪዎች ቡድን:</span>
+            <label><input type="checkbox" id="choirGroupA"> ቡድን A</label>
+            <label><input type="checkbox" id="choirGroupB"> ቡድን B</label>
           </div>
-          <div class="choir-form-inline"><span>Saturday Training:</span>
-            <label><input type="radio" name="choirTraining" value="yes" onchange="toggleChoirReason()"> Yes</label>
-            <label><input type="radio" name="choirTraining" value="no" onchange="toggleChoirReason()"> No</label>
+          <div class="choir-form-inline"><span>የቅዳሜ ልምምድ:</span>
+            <label><input type="radio" name="choirTraining" value="yes" onchange="toggleChoirReason()"> አዎ</label>
+            <label><input type="radio" name="choirTraining" value="no" onchange="toggleChoirReason()"> የለም</label>
           </div>
           <input type="text" id="choirTrainingReason" placeholder="Reason (e.g. hall not available)" maxlength="500" style="display:none;">
           <textarea id="choirNotes" rows="2" placeholder="Notes (songs to practice, what to bring…)" maxlength="2000"></textarea>
@@ -789,17 +794,130 @@
             <button class="copy-btn" id="choirCancelBtn" style="display:none;" onclick="resetChoirForm()">Cancel</button>
           </div>
         </div>`;
+      renderChoirPickers();
+    }
+
+    // Role pickers list the choir members; re-rendered when the member list changes, keeping
+    // whatever is already ticked.
+    function renderChoirPickers() {
+      const holder = document.getElementById('choirPickers');
+      if (!holder) return;
+      const current = holder.childElementCount ? readChoirFormRoles() : {};
+      if (!choirMembers.length) {
+        holder.innerHTML = '<p class="comment-hint" style="margin:0;">Add choir members below to assign Lead Singer, Keyboard and Guitar.</p>';
+        return;
+      }
+      holder.innerHTML = CHOIR_PEOPLE_ROLES.map(([key, label]) => `<details class="choir-picker" id="choirPick_${key}">
+          <summary>${label}: <span class="choir-picked">—</span></summary>
+          <div class="choir-picker-list">${choirMembers.map(m => `<label><input type="checkbox" value="${m.id}" data-email="${escapeHtml(m.email || '')}" data-name="${escapeHtml(m.name)}" onchange="updateChoirPickerSummary('${key}')"> ${escapeHtml(m.name)}${m.group ? ` <span class="comment-hint">(ቡድን ${m.group})</span>` : ''}</label>`).join('')}</div>
+        </details>`).join('');
+      setChoirFormRoles(current, true);
+    }
+
+    async function loadChoirMembers() {
+      try {
+        const res = await fetch('/api/choir-plan/members', { headers: authHeaders() });
+        if (res.ok) choirMembers = await res.json();
+      } catch (err) { /* plan still shows without the member list */ }
+      if (choirCanEdit && !choirUsers.length) {
+        try {
+          const res = await fetch('/api/choir-plan/users', { headers: authHeaders() });
+          if (res.ok) choirUsers = await res.json();
+        } catch (err) { /* typing a name still works */ }
+      }
+      renderChoirMembersSection();
+      renderChoirPickers();
+    }
+
+    function renderChoirMembersSection() {
+      const section = document.getElementById('choirMembersSection');
+      if (!section) return;
+      const wasOpen = section.querySelector('details')?.open;
+      const memberEmails = new Set(choirMembers.map(m => (m.email || '').toLowerCase()).filter(Boolean));
+      const groupSelect = (id, value) => `<select ${id ? `onchange="updateChoirMemberGroup(${id}, this.value)"` : 'id="choirMemberGroup"'}>
+          <option value="" ${!value ? 'selected' : ''}>No group</option>
+          <option value="A" ${value === 'A' ? 'selected' : ''}>ቡድን A</option>
+          <option value="B" ${value === 'B' ? 'selected' : ''}>ቡድን B</option>
+        </select>`;
+      section.innerHTML = `<details class="choir-members" ${wasOpen ? 'open' : ''}>
+          <summary>👥 Choir Members (${choirMembers.length})</summary>
+          ${choirMembers.length ? `<table class="choir-roles-table choir-members-table">
+            <tr><th>Name</th><th>Group</th>${choirCanEdit ? '<th></th>' : ''}</tr>
+            ${choirMembers.map(m => `<tr>
+              <td>${escapeHtml(m.name)}${m.email ? ' <span title="Has a Mezmurify account">👤</span>' : ''}</td>
+              <td>${choirCanEdit ? groupSelect(m.id, m.group) : (m.group ? 'ቡድን ' + m.group : '—')}</td>
+              ${choirCanEdit ? `<td><div class="sunday-song-actions"><button class="destructive" title="Remove from choir" onclick="deleteChoirMember(${m.id})">✕</button></div></td>` : ''}
+            </tr>`).join('')}
+          </table>` : '<p class="comment-hint">No choir members yet.</p>'}
+          ${choirCanEdit ? `<div class="choir-form" style="margin-top:8px;">
+            <h4 style="margin:0;">Add a member</h4>
+            <select id="choirMemberUser" onchange="pickChoirMemberUser(this)">
+              <option value="">— Pick a Mezmurify user, or type a name below —</option>
+              ${choirUsers.filter(u => !memberEmails.has(u.email)).map(u => `<option value="${escapeHtml(u.email)}" data-name="${escapeHtml(u.name)}">${escapeHtml(u.name)}</option>`).join('')}
+            </select>
+            <input type="text" id="choirMemberName" placeholder="Name" maxlength="200" oninput="document.getElementById('choirMemberUser').value = ''">
+            <div class="choir-form-inline">${groupSelect(null, '')}
+              <button class="keyboard-btn" onclick="addChoirMember()">Add member</button>
+            </div>
+          </div>` : ''}
+        </details>`;
+    }
+
+    function pickChoirMemberUser(select) {
+      const option = select.selectedOptions[0];
+      document.getElementById('choirMemberName').value = option && option.value ? option.dataset.name : '';
+    }
+
+    async function saveChoirMember(method, url, body) {
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not save.');
+        await loadChoirMembers();
+        return true;
+      } catch (err) {
+        alert('Choir members: ' + err.message);
+        return false;
+      }
+    }
+
+    async function addChoirMember() {
+      const name = document.getElementById('choirMemberName').value.trim();
+      if (!name) { alert('Please pick a user or type a name.'); return; }
+      await saveChoirMember('POST', '/api/choir-plan/members', {
+        name,
+        email: document.getElementById('choirMemberUser').value || null,
+        group: document.getElementById('choirMemberGroup').value || null,
+      });
+    }
+
+    async function updateChoirMemberGroup(id, group) {
+      const m = choirMembers.find(item => item.id === id);
+      if (m) await saveChoirMember('PUT', `/api/choir-plan/members/${id}`, { name: m.name, email: m.email, group: group || null });
+    }
+
+    async function deleteChoirMember(id) {
+      const m = choirMembers.find(item => item.id === id);
+      if (!m || !confirm(`Remove ${m.name} from the choir member list?`)) return;
+      await saveChoirMember('DELETE', `/api/choir-plan/members/${id}`);
     }
 
     function resetChoirForm() {
       choirPlanEditingId = null;
-      ['choirDate', 'choirStart', 'choirEnd', 'choirPlace', 'choirNotes', 'choirTrainingReason'].forEach(id => { document.getElementById(id).value = ''; });
+      ['choirDate', 'choirNotes', 'choirTrainingReason'].forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('choirStart').value = CHOIR_DEFAULTS.start;
+      document.getElementById('choirEnd').value = CHOIR_DEFAULTS.end;
+      document.getElementById('choirPlace').value = CHOIR_DEFAULTS.place;
       setChoirFormRoles({});
       document.getElementById('choirGroupA').checked = false;
       document.getElementById('choirGroupB').checked = false;
       document.querySelectorAll('input[name="choirTraining"]').forEach(el => { el.checked = false; });
       toggleChoirReason();
-      document.getElementById('choirFormTitle').textContent = 'Add a rehearsal';
+      document.getElementById('choirFormTitle').textContent = '➕ ሳምንታዊ የአምልኮ ፕሮግራም';
       document.getElementById('choirSaveBtn').textContent = 'Add';
       document.getElementById('choirCancelBtn').style.display = 'none';
     }
@@ -822,7 +940,7 @@
       });
       document.getElementById('choirTrainingReason').value = r.trainingReason || '';
       toggleChoirReason();
-      document.getElementById('choirFormTitle').textContent = 'Edit rehearsal';
+      document.getElementById('choirFormTitle').textContent = '✏️ ሳምንታዊ የአምልኮ ፕሮግራም';
       document.getElementById('choirSaveBtn').textContent = 'Save';
       document.getElementById('choirCancelBtn').style.display = '';
       document.getElementById('choirPlanForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -853,7 +971,7 @@
         resetChoirForm();
         await loadChoirPlan();
       } catch (err) {
-        alert('Could not save the rehearsal: ' + err.message);
+        alert('Could not save (ሳምንታዊ የአምልኮ ፕሮግራም): ' + err.message);
       } finally {
         btn.disabled = false;
       }
@@ -869,9 +987,9 @@
       CHOIR_PEOPLE_ROLES.forEach(([key, label]) => {
         if ((a[key] || []).length) lines.push(`*${label}:* ${a[key].map(p => p.name).join(', ')}`);
       });
-      if ((a.singerGroup || []).length) lines.push(`*Singer Group:* ${a.singerGroup.map(g => 'Group ' + g).join(', ')}`);
-      if (r.saturdayTraining === true) lines.push('*Saturday Training:* Yes');
-      if (r.saturdayTraining === false) lines.push(`*Saturday Training:* No${r.trainingReason ? ` – ${r.trainingReason}` : ''}`);
+      if ((a.singerGroup || []).length) lines.push(`*የዘማሪዎች ቡድን:* ${a.singerGroup.map(g => 'ቡድን ' + g).join(', ')}`);
+      if (r.saturdayTraining === true) lines.push('*የቅዳሜ ልምምድ:* አዎ');
+      if (r.saturdayTraining === false) lines.push(`*የቅዳሜ ልምምድ:* የለም${r.trainingReason ? ` – ${r.trainingReason}` : ''}`);
       if (r.notes) lines.push('', r.notes);
       lines.push('', `${location.origin} → Choir Plan`);
       return lines.join('\n').replace(/\n{3,}/g, '\n\n');
@@ -886,22 +1004,26 @@
       window.open(`https://wa.me/?text=${encodeURIComponent(choirRehearsalText(r))}`, '_blank', 'noopener');
     }
 
+    // Two-column table (activity | who); every activity is listed, "—" while unassigned.
     function choirAssignmentsHtml(r) {
       const a = r.assignments || {};
-      const lines = CHOIR_PEOPLE_ROLES
-        .filter(([key]) => (a[key] || []).length)
-        .map(([key, label]) => `<div><b>${label}:</b> ${escapeHtml(a[key].map(p => p.name).join(', '))}</div>`);
-      if ((a.singerGroup || []).length) lines.push(`<div><b>Singer Group:</b> ${a.singerGroup.map(g => 'Group ' + g).join(', ')}</div>`);
-      if (r.saturdayTraining === true) lines.push('<div><b>Saturday Training:</b> Yes</div>');
-      if (r.saturdayTraining === false) lines.push(`<div><b>Saturday Training:</b> No${r.trainingReason ? ` – ${escapeHtml(r.trainingReason)}` : ''}</div>`);
-      return lines.length ? `<div class="choir-item-roles">${lines.join('')}</div>` : '';
+      const rows = CHOIR_PEOPLE_ROLES.map(([key, label]) => [label, (a[key] || []).map(p => p.name).join(', ')]);
+      rows.push(['የዘማሪዎች ቡድን', (a.singerGroup || []).map(g => 'ቡድን ' + g).join(', ')]);
+      rows.push(['የቅዳሜ ልምምድ', r.saturdayTraining === true ? 'አዎ'
+        : r.saturdayTraining === false ? `የለም${r.trainingReason ? ` – ${r.trainingReason}` : ''}` : '']);
+      return `<table class="choir-roles-table">${rows
+        .map(([label, value]) => `<tr><th>${label}</th><td>${value ? escapeHtml(value) : '—'}</td></tr>`)
+        .join('')}</table>`;
     }
 
-    function setChoirFormRoles(a) {
+    function setChoirFormRoles(a, keepGroups) {
       CHOIR_PEOPLE_ROLES.forEach(([key]) => {
-        const picked = new Set((a[key] || []).map(p => p.email));
-        document.querySelectorAll(`#choirPick_${key} input[type=checkbox]`).forEach(box => { box.checked = picked.has(box.value); });
-        updateChoirPickerSummary(key);
+        const ids = new Set((a[key] || []).map(p => p.memberId).filter(Boolean).map(String));
+        const emails = new Set((a[key] || []).map(p => p.email).filter(Boolean));
+        document.querySelectorAll(`#choirPick_${key} input[type=checkbox]`).forEach(box => {
+          box.checked = ids.has(box.value) || (!!box.dataset.email && emails.has(box.dataset.email));
+        });
+        if (document.getElementById('choirPick_' + key)) updateChoirPickerSummary(key);
       });
     }
 
@@ -909,9 +1031,9 @@
       const roles = {};
       CHOIR_PEOPLE_ROLES.forEach(([key]) => {
         roles[key] = [...document.querySelectorAll(`#choirPick_${key} input[type=checkbox]:checked`)]
-          .map(box => ({ email: box.value, name: box.dataset.name }));
+          .map(box => ({ memberId: Number(box.value), ...(box.dataset.email ? { email: box.dataset.email } : {}), name: box.dataset.name }));
       });
-      roles.singerGroup = ['A', 'B'].filter(g => document.getElementById('choirGroup' + g).checked);
+      roles.singerGroup = ['A', 'B'].filter(g => document.getElementById('choirGroup' + g)?.checked);
       return roles;
     }
 
@@ -930,7 +1052,7 @@
     }
 
     async function deleteChoirRehearsal(id) {
-      if (!confirm('Delete this rehearsal?')) return;
+      if (!confirm('Delete this ሳምንታዊ የአምልኮ ፕሮግራም?')) return;
       try {
         const res = await fetch(`/api/choir-plan/${id}`, { method: 'DELETE', headers: authHeaders() });
         const data = await res.json().catch(() => ({}));
@@ -938,7 +1060,7 @@
         if (choirPlanEditingId === id) resetChoirForm();
         await loadChoirPlan();
       } catch (err) {
-        alert('Could not delete the rehearsal: ' + err.message);
+        alert('Could not delete (ሳምንታዊ የአምልኮ ፕሮግራም): ' + err.message);
       }
     }
 

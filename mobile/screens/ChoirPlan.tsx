@@ -12,10 +12,12 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
 import { getChoirPlan, saveChoirRehearsal, deleteChoirRehearsal, getChoirMembers } from '../lib/api';
-import type { ChoirRehearsal, ChoirMember } from '../lib/api';
+import type { ChoirRehearsal, ChoirMember, ChoirPerson } from '../lib/api';
 import MemberPicker from '../components/MemberPicker';
 import { formatSundayDate } from '../lib/sundayDates';
 import { colors } from '../theme';
@@ -24,13 +26,18 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const toDateString = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const toTimeString = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
+// Usual rehearsal: 09:30-13:00 in Dachau - prefilled for new entries, still editable.
+const DEFAULT_START = '09:30';
+const DEFAULT_END = '13:00';
+const DEFAULT_PLACE = 'Dachau';
+
 type PeopleRole = 'leadSinger' | 'keyboard' | 'guitar';
 const PEOPLE_ROLES: [PeopleRole, string][] = [
-  ['leadSinger', 'Lead Singer'],
-  ['keyboard', 'Keyboard'],
-  ['guitar', 'Guitar'],
+  ['leadSinger', 'መሪ ዘማሪ'],
+  ['keyboard', 'ኪቦርድ'],
+  ['guitar', 'ጊታር'],
 ];
-const emptyRoles = (): Record<PeopleRole, ChoirMember[]> => ({ leadSinger: [], keyboard: [], guitar: [] });
+const emptyRoles = (): Record<PeopleRole, ChoirPerson[]> => ({ leadSinger: [], keyboard: [], guitar: [] });
 
 // Choir rehearsal schedule. Everyone signed in sees the upcoming rehearsals; admins and users
 // with export rights (the ones who plan Sunday Songs) also get the add/edit/delete controls.
@@ -43,13 +50,14 @@ export default function ChoirPlan() {
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [date, setDate] = useState<string | null>(null);
-  const [startTime, setStartTime] = useState<string | null>(null);
-  const [endTime, setEndTime] = useState<string | null>(null);
-  const [place, setPlace] = useState('');
+  const [startTime, setStartTime] = useState<string | null>(DEFAULT_START);
+  const [endTime, setEndTime] = useState<string | null>(DEFAULT_END);
+  const [place, setPlace] = useState(DEFAULT_PLACE);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [members, setMembers] = useState<ChoirMember[]>([]);
-  const [roles, setRoles] = useState<Record<PeopleRole, ChoirMember[]>>(emptyRoles());
+  const [roles, setRoles] = useState<Record<PeopleRole, ChoirPerson[]>>(emptyRoles());
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [groups, setGroups] = useState<('A' | 'B')[]>([]);
   const [training, setTraining] = useState<boolean | null>(null);
   const [trainingReason, setTrainingReason] = useState('');
@@ -66,9 +74,7 @@ export default function ChoirPlan() {
       .then(data => {
         setRehearsals(data.rehearsals);
         setCanEdit(data.canEdit);
-        if (data.canEdit) {
-          getChoirMembers(session.access_token).then(setMembers).catch(() => setMembers([]));
-        }
+        getChoirMembers(session.access_token).then(setMembers).catch(() => setMembers([]));
       })
       .catch(err => setError(err instanceof Error ? err.message : 'Could not load the choir plan.'))
       .finally(() => setLoading(false));
@@ -79,9 +85,9 @@ export default function ChoirPlan() {
   const resetForm = () => {
     setEditingId(null);
     setDate(null);
-    setStartTime(null);
-    setEndTime(null);
-    setPlace('');
+    setStartTime(DEFAULT_START);
+    setEndTime(DEFAULT_END);
+    setPlace(DEFAULT_PLACE);
     setNotes('');
     setRoles(emptyRoles());
     setGroups([]);
@@ -141,7 +147,7 @@ export default function ChoirPlan() {
   const handleSave = async () => {
     if (!session || saving) return;
     if (!date) {
-      Alert.alert('Choose a date', 'Please pick the rehearsal date first.');
+      Alert.alert('Choose a date', 'Please pick the date first.');
       return;
     }
     setSaving(true);
@@ -180,9 +186,9 @@ export default function ChoirPlan() {
     PEOPLE_ROLES.forEach(([key, label]) => {
       if (a[key]?.length) lines.push(`*${label}:* ${a[key]!.map(m => m.name).join(', ')}`);
     });
-    if (a.singerGroup?.length) lines.push(`*Singer Group:* ${a.singerGroup.map(g => `Group ${g}`).join(', ')}`);
-    if (r.saturdayTraining === true) lines.push('*Saturday Training:* Yes');
-    if (r.saturdayTraining === false) lines.push(`*Saturday Training:* No${r.trainingReason ? ` – ${r.trainingReason}` : ''}`);
+    if (a.singerGroup?.length) lines.push(`*የዘማሪዎች ቡድን:* ${a.singerGroup.map(g => `ቡድን ${g}`).join(', ')}`);
+    if (r.saturdayTraining === true) lines.push('*የቅዳሜ ልምምድ:* አዎ');
+    if (r.saturdayTraining === false) lines.push(`*የቅዳሜ ልምምድ:* የለም${r.trainingReason ? ` – ${r.trainingReason}` : ''}`);
     if (r.notes) lines.push('', r.notes);
     lines.push('', `${process.env.EXPO_PUBLIC_API_URL ?? 'https://mezmurify.com'} → Choir Plan`);
     const text = encodeURIComponent(lines.join('\n').replace(/\n{3,}/g, '\n\n'));
@@ -195,7 +201,7 @@ export default function ChoirPlan() {
 
   const handleDelete = (r: ChoirRehearsal) => {
     if (!session) return;
-    Alert.alert('Delete rehearsal?', formatSundayDate(r.date), [
+    Alert.alert('Delete ሳምንታዊ የአምልኮ ፕሮግራም?', formatSundayDate(r.date), [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -243,9 +249,17 @@ export default function ChoirPlan() {
     );
   }
 
+  const membersButton = (
+    <TouchableOpacity style={styles.membersButton} onPress={() => navigation.navigate('ChoirMembers')}>
+      <MaterialCommunityIcons name="account-group" size={20} color={colors.accent} />
+      <Text style={styles.membersButtonText}>Choir Members ({members.length})</Text>
+      <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+
   const form = canEdit ? (
     <View style={styles.form}>
-      <Text style={styles.formTitle}>{editingId ? 'Edit rehearsal' : 'Add a rehearsal'}</Text>
+      <Text style={styles.formTitle}>{editingId ? '✏️ ሳምንታዊ የአምልኮ ፕሮግራም' : '➕ ሳምንታዊ የአምልኮ ፕሮግራም'}</Text>
       <View style={styles.pickRow}>
         <TouchableOpacity style={[styles.pickButton, styles.pickDate]} onPress={pickDate}>
           <MaterialCommunityIcons name="calendar" size={18} color={colors.textSecondary} />
@@ -266,7 +280,7 @@ export default function ChoirPlan() {
         style={styles.input}
         value={place}
         onChangeText={setPlace}
-        placeholder="Place (e.g. church hall)"
+        placeholder="Place"
         placeholderTextColor={colors.textTertiary}
         maxLength={200}
       />
@@ -280,22 +294,22 @@ export default function ChoirPlan() {
         </TouchableOpacity>
       ))}
       <View style={styles.choiceRow}>
-        <Text style={styles.roleLabel}>Singer Group</Text>
+        <Text style={styles.roleLabel}>የዘማሪዎች ቡድን</Text>
         {(['A', 'B'] as const).map(g => (
           <TouchableOpacity key={g} style={[styles.chip, groups.includes(g) && styles.chipOn]} onPress={() => toggleGroup(g)}>
-            <Text style={[styles.chipText, groups.includes(g) && styles.chipTextOn]}>Group {g}</Text>
+            <Text style={[styles.chipText, groups.includes(g) && styles.chipTextOn]}>ቡድን {g}</Text>
           </TouchableOpacity>
         ))}
       </View>
       <View style={styles.choiceRow}>
-        <Text style={styles.roleLabel}>Saturday Training</Text>
+        <Text style={styles.roleLabel}>የቅዳሜ ልምምድ</Text>
         {([true, false] as const).map(value => (
           <TouchableOpacity
             key={String(value)}
             style={[styles.chip, training === value && styles.chipOn]}
             onPress={() => setTraining(training === value ? null : value)}
           >
-            <Text style={[styles.chipText, training === value && styles.chipTextOn]}>{value ? 'Yes' : 'No'}</Text>
+            <Text style={[styles.chipText, training === value && styles.chipTextOn]}>{value ? 'አዎ' : 'የለም'}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -335,6 +349,16 @@ export default function ChoirPlan() {
     </View>
   ) : null;
 
+  // Two-column table rows (activity, who); every activity is listed, "—" while unassigned.
+  const roleRows = (r: ChoirRehearsal): [string, string][] => [
+    ...PEOPLE_ROLES.map(([key, label]): [string, string] => [label, (r.assignments?.[key] ?? []).map(m => m.name).join(', ')]),
+    ['የዘማሪዎች ቡድን', (r.assignments?.singerGroup ?? []).map(g => `ቡድን ${g}`).join(', ')],
+    [
+      'የቅዳሜ ልምምድ',
+      r.saturdayTraining === true ? 'አዎ' : r.saturdayTraining === false ? `የለም${r.trainingReason ? ` – ${r.trainingReason}` : ''}` : '',
+    ],
+  ];
+
   const renderItem = ({ item }: { item: ChoirRehearsal }) => {
     const time = [item.startTime, item.endTime].filter(Boolean).join(' – ');
     return (
@@ -345,24 +369,14 @@ export default function ChoirPlan() {
             {time ? ` · ${time}` : ''}
           </Text>
           {item.place ? <Text style={styles.itemPlace}>📍 {item.place}</Text> : null}
-          {PEOPLE_ROLES.filter(([key]) => item.assignments?.[key]?.length).map(([key, label]) => (
-            <Text key={key} style={styles.itemRole}>
-              <Text style={styles.itemRoleLabel}>{label}: </Text>
-              {item.assignments[key]!.map(m => m.name).join(', ')}
-            </Text>
-          ))}
-          {item.assignments?.singerGroup?.length ? (
-            <Text style={styles.itemRole}>
-              <Text style={styles.itemRoleLabel}>Singer Group: </Text>
-              {item.assignments.singerGroup.map(g => `Group ${g}`).join(', ')}
-            </Text>
-          ) : null}
-          {item.saturdayTraining !== null ? (
-            <Text style={styles.itemRole}>
-              <Text style={styles.itemRoleLabel}>Saturday Training: </Text>
-              {item.saturdayTraining ? 'Yes' : `No${item.trainingReason ? ` – ${item.trainingReason}` : ''}`}
-            </Text>
-          ) : null}
+          <View style={styles.table}>
+            {roleRows(item).map(([label, value], index) => (
+              <View key={label} style={[styles.tableRow, index > 0 && styles.tableRowBorder]}>
+                <Text style={styles.tableLabel}>{label}</Text>
+                <Text style={styles.tableValue}>{value || '—'}</Text>
+              </View>
+            ))}
+          </View>
           {item.notes ? <Text style={styles.itemNotes}>{item.notes}</Text> : null}
         </View>
         <View style={styles.itemActions}>
@@ -372,10 +386,10 @@ export default function ChoirPlan() {
         </View>
         {canEdit ? (
           <View style={styles.itemActions}>
-            <TouchableOpacity onPress={() => startEdit(item)} accessibilityLabel="Edit rehearsal" style={styles.iconButton}>
+            <TouchableOpacity onPress={() => startEdit(item)} accessibilityLabel="Edit ሳምንታዊ የአምልኮ ፕሮግራም" style={styles.iconButton}>
               <MaterialCommunityIcons name="pencil" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDelete(item)} accessibilityLabel="Delete rehearsal" style={styles.iconButton}>
+            <TouchableOpacity onPress={() => handleDelete(item)} accessibilityLabel="Delete ሳምንታዊ የአምልኮ ፕሮግራም" style={styles.iconButton}>
               <MaterialCommunityIcons name="delete-outline" size={20} color={colors.error} />
             </TouchableOpacity>
           </View>
@@ -399,10 +413,15 @@ export default function ChoirPlan() {
         data={rehearsals}
         keyExtractor={item => String(item.id)}
         renderItem={renderItem}
-        ListHeaderComponent={form}
+        ListHeaderComponent={
+          <>
+            {membersButton}
+            {form}
+          </>
+        }
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={<Text style={styles.empty}>No upcoming rehearsals planned yet.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>No ሳምንታዊ የአምልኮ ፕሮግራም planned yet.</Text>}
       />
     </>
   );
@@ -450,6 +469,17 @@ const styles = StyleSheet.create({
   itemText: { flex: 1, minWidth: 0 },
   itemDate: { fontSize: 15, fontWeight: '700', color: colors.accent },
   itemPlace: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
+  membersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  membersButtonText: { flex: 1, color: colors.textPrimary, fontWeight: '600', fontSize: 15 },
   roleButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -467,8 +497,19 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   chipText: { color: colors.textPrimary, fontSize: 14 },
   chipTextOn: { color: colors.highlightText, fontWeight: '700' },
-  itemRole: { fontSize: 14, color: colors.textPrimary, marginTop: 2 },
-  itemRoleLabel: { color: colors.textSecondary, fontWeight: '600' },
+  table: { marginTop: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 6, overflow: 'hidden' },
+  tableRow: { flexDirection: 'row' },
+  tableRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+  tableLabel: {
+    width: '42%',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: colors.card,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  tableValue: { flex: 1, paddingHorizontal: 8, paddingVertical: 6, color: colors.textPrimary, fontSize: 14 },
   itemNotes: { fontSize: 14, color: colors.textPrimary, marginTop: 4 },
   itemActions: { flexDirection: 'row', gap: 4 },
   iconButton: { padding: 6 },

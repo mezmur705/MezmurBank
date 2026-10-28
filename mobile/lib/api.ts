@@ -207,15 +207,31 @@ export async function exportToDrive(
   return body;
 }
 
+// Someone on the choir member list: a Mezmurify user (email set) or just a typed name.
 export interface ChoirMember {
+  id: number;
+  name: string;
+  email: string | null;
+  group: 'A' | 'B' | null;
+}
+
+// A person assigned to a role (older entries only carry an email).
+export interface ChoirPerson {
+  memberId?: number;
+  email?: string;
+  name: string;
+}
+
+// A Mezmurify sign-in user, for adding to the member list.
+export interface ChoirUser {
   email: string;
   name: string;
 }
 
 export interface ChoirAssignments {
-  leadSinger?: ChoirMember[];
-  keyboard?: ChoirMember[];
-  guitar?: ChoirMember[];
+  leadSinger?: ChoirPerson[];
+  keyboard?: ChoirPerson[];
+  guitar?: ChoirPerson[];
   singerGroup?: ('A' | 'B')[];
 }
 
@@ -243,7 +259,7 @@ export async function getChoirPlan(accessToken: string): Promise<{ canEdit: bool
   return body;
 }
 
-// Sign-in names to assign to roles (planners only).
+// The choir member list (signed-in users).
 export async function getChoirMembers(accessToken: string): Promise<ChoirMember[]> {
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
@@ -251,6 +267,35 @@ export async function getChoirMembers(accessToken: string): Promise<ChoirMember[
   const body = await response.json().catch(() => []);
   if (!response.ok) throw new Error(body?.error ?? 'Could not load the members.');
   return body;
+}
+
+// Mezmurify sign-in users to add as members (planners only).
+export async function getChoirUsers(accessToken: string): Promise<ChoirUser[]> {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
+  const response = await fetch(`${apiUrl}/api/choir-plan/users`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const body = await response.json().catch(() => []);
+  if (!response.ok) throw new Error(body?.error ?? 'Could not load the users.');
+  return body;
+}
+
+// Adds a member (no id), changes one (id), or removes one (remove: true). Planners only.
+export async function saveChoirMember(
+  accessToken: string,
+  member: { id?: number; name?: string; email?: string | null; group?: 'A' | 'B' | null },
+  remove = false
+): Promise<void> {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
+  const response = await fetch(`${apiUrl}/api/choir-plan/members${member.id ? `/${member.id}` : ''}`, {
+    method: remove ? 'DELETE' : member.id ? 'PUT' : 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: remove ? undefined : JSON.stringify({ name: member.name, email: member.email ?? null, group: member.group ?? null }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error ?? 'Could not save the member.');
+  }
 }
 
 // Creates a rehearsal, or updates it when id is given.
