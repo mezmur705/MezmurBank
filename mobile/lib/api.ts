@@ -232,6 +232,7 @@ export interface ChoirAssignments {
   leadSinger?: ChoirPerson[];
   keyboard?: ChoirPerson[];
   guitar?: ChoirPerson[];
+  solo?: ChoirPerson[];
   singerGroup?: ('A' | 'B')[];
 }
 

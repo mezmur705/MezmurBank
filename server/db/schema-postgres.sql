@@ -138,7 +138,8 @@ create table if not exists public.choir_rehearsals (
 );
 create index if not exists ix_choir_rehearsals_date on public.choir_rehearsals(rehearsal_date);
 alter table public.choir_rehearsals enable row level security;
--- Who serves: { leadSinger: [{email,name}], keyboard: [...], guitar: [...], singerGroup: ['A','B'] }.
+-- Who serves: { leadSinger, keyboard, guitar, solo: [{memberId?, email?, name}], singerGroup: ['A','B'] }.
+-- saturday_training/training_reason = the Saturday prayer (Yes/No + details).
 alter table public.choir_rehearsals add column if not exists assignments jsonb not null default '{}'::jsonb;
 -- Choir member list: who the roles are picked from. A member is either a Mezmurify sign-in
 -- user (email set) or just a typed name; singer_group is Group A or B.

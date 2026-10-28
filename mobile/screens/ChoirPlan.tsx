@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
@@ -31,13 +31,36 @@ const DEFAULT_START = '09:30';
 const DEFAULT_END = '13:00';
 const DEFAULT_PLACE = 'Dachau';
 
-type PeopleRole = 'leadSinger' | 'keyboard' | 'guitar';
+type PeopleRole = 'leadSinger' | 'keyboard' | 'guitar' | 'solo';
 const PEOPLE_ROLES: [PeopleRole, string][] = [
-  ['leadSinger', 'መሪ ዘማሪ'],
-  ['keyboard', 'ኪቦርድ'],
+  ['leadSinger', 'የአምልኮ መሪ'],
+  ['keyboard', 'የኪ-ቦርድ ተጫዋች'],
   ['guitar', 'ጊታር'],
+  ['solo', 'የሶሎ ዝማሬ'],
 ];
-const emptyRoles = (): Record<PeopleRole, ChoirPerson[]> => ({ leadSinger: [], keyboard: [], guitar: [] });
+const emptyRoles = (): Record<PeopleRole, ChoirPerson[]> => ({ leadSinger: [], keyboard: [], guitar: [], solo: [] });
+
+// 2026-11-08 -> 08/11/2026, like the printed plan.
+const shortDate = (date: string) => date.split('-').reverse().join('/');
+const groupText = (r: ChoirRehearsal) => (r.assignments?.singerGroup ?? []).join('+');
+const peopleText = (r: ChoirRehearsal, key: PeopleRole) => (r.assignments?.[key] ?? []).map(m => m.name).join(', ');
+// Saturday prayer: "No" shows as -የለም- (plus details), "Yes" as its details (or አዎ).
+const saturdayText = (r: ChoirRehearsal) => {
+  const details = r.trainingReason ?? '';
+  if (r.saturdayTraining === false) return `-የለም-${details ? ` ${details}` : ''}`;
+  if (r.saturdayTraining === true) return details || 'አዎ';
+  return details;
+};
+
+// Columns of the choir's printed plan (one row per Sunday), with widths for the scrolling table.
+const PLAN_COLUMNS: { title: string; width: number; value: (r: ChoirRehearsal) => string }[] = [
+  { title: 'የአምልኮ መሪ', width: 120, value: r => peopleText(r, 'leadSinger') },
+  { title: 'የአምልኮ ቡድን', width: 80, value: groupText },
+  { title: 'የኪ-ቦርድ ተጫዋች', width: 110, value: r => peopleText(r, 'keyboard') },
+  { title: 'ጊታር', width: 90, value: r => peopleText(r, 'guitar') },
+  { title: 'የቅዳሜ ፀሎት', width: 160, value: saturdayText },
+  { title: 'የሶሎ ዝማሬ ቀን', width: 110, value: r => peopleText(r, 'solo') },
+];
 
 // Choir rehearsal schedule. Everyone signed in sees the upcoming rehearsals; admins and users
 // with export rights (the ones who plan Sunday Songs) also get the add/edit/delete controls.
@@ -106,6 +129,7 @@ export default function ChoirPlan() {
       leadSinger: r.assignments?.leadSinger ?? [],
       keyboard: r.assignments?.keyboard ?? [],
       guitar: r.assignments?.guitar ?? [],
+      solo: r.assignments?.solo ?? [],
     });
     setGroups(r.assignments?.singerGroup ?? []);
     setTraining(r.saturdayTraining);
@@ -162,7 +186,7 @@ export default function ChoirPlan() {
           notes: notes.trim() || null,
           assignments: { ...roles, singerGroup: groups },
           saturdayTraining: training,
-          trainingReason: training === false ? trainingReason.trim() || null : null,
+          trainingReason: trainingReason.trim() || null,
         },
         editingId ?? undefined
       );
@@ -178,17 +202,21 @@ export default function ChoirPlan() {
   // WhatsApp can't be posted to a group automatically, so this opens WhatsApp with the
   // announcement ready - pick the choir group and press send.
   const sendToWhatsApp = async (r: ChoirRehearsal) => {
-    const a = r.assignments ?? {};
     const time = [r.startTime, r.endTime].filter(Boolean).join(' – ');
-    const lines = ['🎶 *Choir Plan*', `*${formatSundayDate(r.date)}*${time ? ` · ${time}` : ''}`];
-    if (r.place) lines.push(`📍 ${r.place}`);
-    lines.push('');
-    PEOPLE_ROLES.forEach(([key, label]) => {
-      if (a[key]?.length) lines.push(`*${label}:* ${a[key]!.map(m => m.name).join(', ')}`);
-    });
-    if (a.singerGroup?.length) lines.push(`*የዘማሪዎች ቡድን:* ${a.singerGroup.map(g => `ቡድን ${g}`).join(', ')}`);
-    if (r.saturdayTraining === true) lines.push('*የቅዳሜ ልምምድ:* አዎ');
-    if (r.saturdayTraining === false) lines.push(`*የቅዳሜ ልምምድ:* የለም${r.trainingReason ? ` – ${r.trainingReason}` : ''}`);
+    const lines = [
+      '🎶 *የሙንሽን መዘምራን ሳምንታዊ የአምልኮ ፕሮግራም*',
+      `*${shortDate(r.date)}*${time ? ` · ${time}` : ''}${r.place ? ` · 📍 ${r.place}` : ''}`,
+      '',
+    ];
+    const add = (label: string, value: string) => {
+      if (value) lines.push(`*${label}:* ${value}`);
+    };
+    add('የአምልኮ መሪ', peopleText(r, 'leadSinger'));
+    add('የአምልኮ ቡድን', groupText(r));
+    add('የኪ-ቦርድ ተጫዋች', peopleText(r, 'keyboard'));
+    add('ጊታር', peopleText(r, 'guitar'));
+    add('የቅዳሜ ፀሎት', saturdayText(r));
+    add('የሶሎ ዝማሬ ቀን', peopleText(r, 'solo'));
     if (r.notes) lines.push('', r.notes);
     lines.push('', `${process.env.EXPO_PUBLIC_API_URL ?? 'https://mezmurify.com'} → Choir Plan`);
     const text = encodeURIComponent(lines.join('\n').replace(/\n{3,}/g, '\n\n'));
@@ -294,7 +322,7 @@ export default function ChoirPlan() {
         </TouchableOpacity>
       ))}
       <View style={styles.choiceRow}>
-        <Text style={styles.roleLabel}>የዘማሪዎች ቡድን</Text>
+        <Text style={styles.roleLabel}>የአምልኮ ቡድን</Text>
         {(['A', 'B'] as const).map(g => (
           <TouchableOpacity key={g} style={[styles.chip, groups.includes(g) && styles.chipOn]} onPress={() => toggleGroup(g)}>
             <Text style={[styles.chipText, groups.includes(g) && styles.chipTextOn]}>ቡድን {g}</Text>
@@ -302,7 +330,7 @@ export default function ChoirPlan() {
         ))}
       </View>
       <View style={styles.choiceRow}>
-        <Text style={styles.roleLabel}>የቅዳሜ ልምምድ</Text>
+        <Text style={styles.roleLabel}>የቅዳሜ ፀሎት</Text>
         {([true, false] as const).map(value => (
           <TouchableOpacity
             key={String(value)}
@@ -313,16 +341,14 @@ export default function ChoirPlan() {
           </TouchableOpacity>
         ))}
       </View>
-      {training === false ? (
-        <TextInput
-          style={styles.input}
-          value={trainingReason}
-          onChangeText={setTrainingReason}
-          placeholder="Reason (e.g. hall not available)"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={500}
-        />
-      ) : null}
+      <TextInput
+        style={styles.input}
+        value={trainingReason}
+        onChangeText={setTrainingReason}
+        placeholder="የቅዳሜ ፀሎት – details (e.g. የቤተሰብ ፕሮግራም)"
+        placeholderTextColor={colors.textTertiary}
+        maxLength={500}
+      />
       <TextInput
         style={[styles.input, styles.notesInput]}
         value={notes}
@@ -349,54 +375,64 @@ export default function ChoirPlan() {
     </View>
   ) : null;
 
-  // Two-column table rows (activity, who); every activity is listed, "—" while unassigned.
-  const roleRows = (r: ChoirRehearsal): [string, string][] => [
-    ...PEOPLE_ROLES.map(([key, label]): [string, string] => [label, (r.assignments?.[key] ?? []).map(m => m.name).join(', ')]),
-    ['የዘማሪዎች ቡድን', (r.assignments?.singerGroup ?? []).map(g => `ቡድን ${g}`).join(', ')],
-    [
-      'የቅዳሜ ልምምድ',
-      r.saturdayTraining === true ? 'አዎ' : r.saturdayTraining === false ? `የለም${r.trainingReason ? ` – ${r.trainingReason}` : ''}` : '',
-    ],
-  ];
+  const isUsual = (r: ChoirRehearsal) =>
+    r.startTime === DEFAULT_START && r.endTime === DEFAULT_END && (r.place ?? '') === DEFAULT_PLACE;
 
-  const renderItem = ({ item }: { item: ChoirRehearsal }) => {
-    const time = [item.startTime, item.endTime].filter(Boolean).join(' – ');
-    return (
-      <View style={styles.item}>
-        <View style={styles.itemText}>
-          <Text style={styles.itemDate}>
-            {formatSundayDate(item.date)}
-            {time ? ` · ${time}` : ''}
-          </Text>
-          {item.place ? <Text style={styles.itemPlace}>📍 {item.place}</Text> : null}
-          <View style={styles.table}>
-            {roleRows(item).map(([label, value], index) => (
-              <View key={label} style={[styles.tableRow, index > 0 && styles.tableRowBorder]}>
-                <Text style={styles.tableLabel}>{label}</Text>
-                <Text style={styles.tableValue}>{value || '—'}</Text>
+  const planTable = (
+    <>
+      <Text style={styles.planTitle}>የሙንሽን መዘምራን ሳምንታዊ የአምልኮ ፕሮግራም</Text>
+      {rehearsals.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator>
+          <View style={styles.planTable}>
+            <View style={styles.planRow}>
+              <Text style={[styles.planCell, styles.planHead, { width: 100 }]}>የአምልኮው ቀን</Text>
+              {PLAN_COLUMNS.map(c => (
+                <Text key={c.title} style={[styles.planCell, styles.planHead, { width: c.width }]}>
+                  {c.title}
+                </Text>
+              ))}
+              <View style={[styles.planCell, { width: canEdit ? 112 : 44 }]} />
+            </View>
+            {rehearsals.map((r, index) => (
+              <View key={r.id} style={[styles.planRow, index % 2 === 1 && styles.planRowAlt]}>
+                <View style={[styles.planCell, { width: 100 }]}>
+                  <Text style={styles.planDate}>{shortDate(r.date)}</Text>
+                  {!isUsual(r) ? (
+                    <Text style={styles.planSub}>
+                      {[[r.startTime, r.endTime].filter(Boolean).join('–'), r.place].filter(Boolean).join(' · ')}
+                    </Text>
+                  ) : null}
+                  {r.notes ? <Text style={styles.planSub}>{r.notes}</Text> : null}
+                </View>
+                {PLAN_COLUMNS.map(c => (
+                  <Text key={c.title} style={[styles.planCell, styles.planValue, { width: c.width }]}>
+                    {c.value(r)}
+                  </Text>
+                ))}
+                <View style={[styles.planCell, styles.planActions, { width: canEdit ? 112 : 44 }]}>
+                  <TouchableOpacity onPress={() => sendToWhatsApp(r)} accessibilityLabel="Send to WhatsApp" style={styles.iconButton}>
+                    <MaterialCommunityIcons name="whatsapp" size={22} color="#25D366" />
+                  </TouchableOpacity>
+                  {canEdit ? (
+                    <>
+                      <TouchableOpacity onPress={() => startEdit(r)} accessibilityLabel="Edit ሳምንታዊ የአምልኮ ፕሮግራም" style={styles.iconButton}>
+                        <MaterialCommunityIcons name="pencil" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDelete(r)} accessibilityLabel="Delete ሳምንታዊ የአምልኮ ፕሮግራም" style={styles.iconButton}>
+                        <MaterialCommunityIcons name="delete-outline" size={20} color={colors.error} />
+                      </TouchableOpacity>
+                    </>
+                  ) : null}
+                </View>
               </View>
             ))}
           </View>
-          {item.notes ? <Text style={styles.itemNotes}>{item.notes}</Text> : null}
-        </View>
-        <View style={styles.itemActions}>
-          <TouchableOpacity onPress={() => sendToWhatsApp(item)} accessibilityLabel="Send to WhatsApp" style={styles.iconButton}>
-            <MaterialCommunityIcons name="whatsapp" size={22} color="#25D366" />
-          </TouchableOpacity>
-        </View>
-        {canEdit ? (
-          <View style={styles.itemActions}>
-            <TouchableOpacity onPress={() => startEdit(item)} accessibilityLabel="Edit ሳምንታዊ የአምልኮ ፕሮግራም" style={styles.iconButton}>
-              <MaterialCommunityIcons name="pencil" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDelete(item)} accessibilityLabel="Delete ሳምንታዊ የአምልኮ ፕሮግራም" style={styles.iconButton}>
-              <MaterialCommunityIcons name="delete-outline" size={20} color={colors.error} />
-            </TouchableOpacity>
-          </View>
-        ) : null}
-      </View>
-    );
-  };
+        </ScrollView>
+      ) : (
+        <Text style={styles.empty}>No ሳምንታዊ የአምልኮ ፕሮግራም planned yet.</Text>
+      )}
+    </>
+  );
 
   return (
     <>
@@ -408,21 +444,11 @@ export default function ChoirPlan() {
         onChange={next => pickerRole && setRoles(prev => ({ ...prev, [pickerRole]: next }))}
         onClose={() => setPickerRole(null)}
       />
-      <FlatList
-        style={styles.container}
-        data={rehearsals}
-        keyExtractor={item => String(item.id)}
-        renderItem={renderItem}
-        ListHeaderComponent={
-          <>
-            {membersButton}
-            {form}
-          </>
-        }
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={<Text style={styles.empty}>No ሳምንታዊ የአምልኮ ፕሮግራም planned yet.</Text>}
-      />
+      <ScrollView style={styles.container} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
+        {membersButton}
+        {form}
+        {planTable}
+      </ScrollView>
     </>
   );
 }
@@ -497,6 +523,16 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   chipText: { color: colors.textPrimary, fontSize: 14 },
   chipTextOn: { color: colors.highlightText, fontWeight: '700' },
+  planTitle: { color: '#E53E3E', fontSize: 17, fontWeight: '700', marginBottom: 8 },
+  planTable: { borderWidth: 1, borderColor: colors.border },
+  planRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
+  planRowAlt: { backgroundColor: colors.surface },
+  planCell: { paddingHorizontal: 6, paddingVertical: 8, borderRightWidth: 1, borderRightColor: colors.border },
+  planHead: { color: '#E53E3E', fontWeight: '700', fontSize: 13 },
+  planValue: { color: colors.textPrimary, fontSize: 14 },
+  planDate: { color: colors.accent, fontWeight: '700', fontSize: 14 },
+  planSub: { color: colors.textSecondary, fontSize: 12, marginTop: 2 },
+  planActions: { flexDirection: 'row', alignItems: 'center', borderRightWidth: 0 },
   table: { marginTop: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 6, overflow: 'hidden' },
   tableRow: { flexDirection: 'row' },
   tableRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },

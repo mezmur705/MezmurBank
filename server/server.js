@@ -902,6 +902,7 @@ function parseRehearsal(body) {
     leadSinger: people(a.leadSinger),
     keyboard: people(a.keyboard),
     guitar: people(a.guitar),
+    solo: people(a.solo),
     singerGroup: (Array.isArray(a.singerGroup) ? a.singerGroup : []).filter(g => g === 'A' || g === 'B'),
   };
   const training = body?.saturdayTraining;

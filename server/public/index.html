@@ -134,6 +134,16 @@
     .choir-members summary { cursor: pointer; font-weight: 600; color: #2b6cb0; }
     .choir-members-table th { width: auto; }
     .choir-members-table select { padding: 2px 4px; }
+    .choir-plan-title { color: #c53030; margin: 4px 0 8px; font-size: 1.15rem; }
+    .choir-plan-scroll { overflow-x: auto; }
+    .choir-plan-table { border-collapse: collapse; font-size: 0.9rem; min-width: 720px; width: 100%; }
+    .choir-plan-table th, .choir-plan-table td { border: 1px solid #a0aec0; padding: 6px 8px; vertical-align: top; text-align: left; }
+    .choir-plan-table th { color: #c53030; background: #fff; font-weight: 700; }
+    .choir-plan-table tr:nth-child(even) td { background: #f7fafc; }
+    .choir-plan-date { white-space: nowrap; font-weight: 600; color: #2b6cb0; }
+    .choir-plan-center { text-align: center; }
+    .choir-plan-sub { font-weight: 400; color: #718096; font-size: 0.8rem; white-space: normal; margin-top: 2px; }
+    .choir-plan-actions { white-space: nowrap; width: 1%; }
     .choir-wa-btn { color: #25d366; display: inline-flex; align-items: center; }
     .choir-roles-table { border-collapse: collapse; margin-top: 6px; font-size: 0.9rem; width: 100%; max-width: 520px; }
     .choir-roles-table th, .choir-roles-table td { border: 1px solid #e2e8f0; padding: 4px 8px; text-align: left; vertical-align: top; }
@@ -719,7 +729,7 @@
     let choirCanEdit = false;
     // Usual rehearsal: 09:30-13:00 in Dachau - prefilled for new entries, still editable.
     const CHOIR_DEFAULTS = { start: '09:30', end: '13:00', place: 'Dachau' };
-    const CHOIR_PEOPLE_ROLES = [['leadSinger', 'መሪ ዘማሪ'], ['keyboard', 'ኪቦርድ'], ['guitar', 'ጊታር']];
+    const CHOIR_PEOPLE_ROLES = [['leadSinger', 'የአምልኮ መሪ'], ['keyboard', 'የኪ-ቦርድ ተጫዋች'], ['guitar', 'ጊታር'], ['solo', 'የሶሎ ዝማሬ']];
     async function showChoirPlanView() {
       backToSundaySongs = false;
       closeAccountMenu();
@@ -743,24 +753,33 @@
         renderChoirPlanForm(data.canEdit);
         choirRehearsals = data.rehearsals;
         if (!choirRehearsals.length) { list.innerHTML = '<p class="comment-hint">No ሳምንታዊ የአምልኮ ፕሮግራም planned yet.</p>'; return; }
-        list.innerHTML = choirRehearsals.map(r => {
-          const time = [r.startTime, r.endTime].filter(Boolean).join(' – ');
-          return `<div class="choir-item">
-            <div class="choir-item-main">
-              <div class="choir-item-date">${escapeHtml(formatSundayDate(r.date))}${time ? ` · ${escapeHtml(time)}` : ''}</div>
-              ${r.place ? `<div class="choir-item-place">📍 ${escapeHtml(r.place)}</div>` : ''}
-              ${choirAssignmentsHtml(r)}
-              ${r.notes ? `<div class="choir-item-notes">${escapeHtml(r.notes)}</div>` : ''}
-            </div>
-            <div class="sunday-song-actions">
-              <button class="choir-wa-btn" title="Send to WhatsApp" onclick="sendChoirRehearsalToWhatsApp(${r.id})">${WHATSAPP_ICON_SVG}</button>
-            </div>
-            ${data.canEdit ? `<div class="sunday-song-actions">
-              <button title="Edit" onclick="editChoirRehearsal(${r.id})">✏️</button>
-              <button class="destructive" title="Delete" onclick="deleteChoirRehearsal(${r.id})">✕</button>
-            </div>` : ''}
-          </div>`;
-        }).join('');
+        // Same layout as the choir's printed plan: one row per Sunday.
+        const names = (a, key) => escapeHtml((a[key] || []).map(p => p.name).join(', '));
+        list.innerHTML = `<h3 class="choir-plan-title">የሙንሽን መዘምራን ሳምንታዊ የአምልኮ ፕሮግራም</h3>
+          <div class="choir-plan-scroll"><table class="choir-plan-table">
+            <tr><th>የአምልኮው ቀን</th><th>የአምልኮ መሪ</th><th>የአምልኮ ቡድን</th><th>የኪ-ቦርድ ተጫዋች</th><th>ጊታር</th><th>የቅዳሜ ፀሎት</th><th>የሶሎ ዝማሬ ቀን</th><th></th></tr>
+            ${choirRehearsals.map(r => {
+              const a = r.assignments || {};
+              const time = [r.startTime, r.endTime].filter(Boolean).join('–');
+              const unusual = time !== `${CHOIR_DEFAULTS.start}–${CHOIR_DEFAULTS.end}` || (r.place || '') !== CHOIR_DEFAULTS.place;
+              return `<tr>
+                <td class="choir-plan-date">${choirShortDate(r.date)}
+                  ${unusual ? `<div class="choir-plan-sub">${escapeHtml([time, r.place].filter(Boolean).join(' · '))}</div>` : ''}
+                  ${r.notes ? `<div class="choir-plan-sub">${escapeHtml(r.notes)}</div>` : ''}</td>
+                <td>${names(a, 'leadSinger')}</td>
+                <td class="choir-plan-center">${escapeHtml(choirGroupText(a))}</td>
+                <td>${names(a, 'keyboard')}</td>
+                <td>${names(a, 'guitar')}</td>
+                <td>${escapeHtml(choirSaturdayText(r))}</td>
+                <td>${names(a, 'solo')}</td>
+                <td class="choir-plan-actions"><div class="sunday-song-actions">
+                  <button class="choir-wa-btn" title="Send to WhatsApp" onclick="sendChoirRehearsalToWhatsApp(${r.id})">${WHATSAPP_ICON_SVG}</button>
+                  ${data.canEdit ? `<button title="Edit" onclick="editChoirRehearsal(${r.id})">✏️</button>
+                  <button class="destructive" title="Delete" onclick="deleteChoirRehearsal(${r.id})">✕</button>` : ''}
+                </div></td>
+              </tr>`;
+            }).join('')}
+          </table></div>`;
       } catch (err) {
         list.innerHTML = `<p class="comment-hint">${escapeHtml(err.message)}</p>`;
       }
@@ -779,15 +798,15 @@
           </div>
           <input type="text" id="choirPlace" placeholder="Place" maxlength="200" value="${CHOIR_DEFAULTS.place}">
           <div id="choirPickers"></div>
-          <div class="choir-form-inline"><span>የዘማሪዎች ቡድን:</span>
+          <div class="choir-form-inline"><span>የአምልኮ ቡድን:</span>
             <label><input type="checkbox" id="choirGroupA"> ቡድን A</label>
             <label><input type="checkbox" id="choirGroupB"> ቡድን B</label>
           </div>
-          <div class="choir-form-inline"><span>የቅዳሜ ልምምድ:</span>
+          <div class="choir-form-inline"><span>የቅዳሜ ፀሎት:</span>
             <label><input type="radio" name="choirTraining" value="yes" onchange="toggleChoirReason()"> አዎ</label>
             <label><input type="radio" name="choirTraining" value="no" onchange="toggleChoirReason()"> የለም</label>
           </div>
-          <input type="text" id="choirTrainingReason" placeholder="Reason (e.g. hall not available)" maxlength="500" style="display:none;">
+          <input type="text" id="choirTrainingReason" placeholder="የቅዳሜ ፀሎት – details (e.g. የቤተሰብ ፕሮግራም, ሚኪ 05-12-26)" maxlength="500">
           <textarea id="choirNotes" rows="2" placeholder="Notes (songs to practice, what to bring…)" maxlength="2000"></textarea>
           <div style="display:flex; gap:8px;">
             <button class="keyboard-btn" id="choirSaveBtn" onclick="saveChoirRehearsal()">Add</button>
@@ -955,7 +974,7 @@
         notes: document.getElementById('choirNotes').value,
         assignments: readChoirFormRoles(),
         saturdayTraining: choirTrainingValue(),
-        trainingReason: choirTrainingValue() === false ? document.getElementById('choirTrainingReason').value : '',
+        trainingReason: document.getElementById('choirTrainingReason').value,
       };
       if (!body.date) { alert('Please choose a date.'); return; }
       const btn = document.getElementById('choirSaveBtn');
@@ -981,18 +1000,17 @@
     function choirRehearsalText(r) {
       const a = r.assignments || {};
       const time = [r.startTime, r.endTime].filter(Boolean).join(' – ');
-      const lines = ['🎶 *Choir Plan*', `*${formatSundayDate(r.date)}*${time ? ` · ${time}` : ''}`];
-      if (r.place) lines.push(`📍 ${r.place}`);
-      lines.push('');
-      CHOIR_PEOPLE_ROLES.forEach(([key, label]) => {
-        if ((a[key] || []).length) lines.push(`*${label}:* ${a[key].map(p => p.name).join(', ')}`);
-      });
-      if ((a.singerGroup || []).length) lines.push(`*የዘማሪዎች ቡድን:* ${a.singerGroup.map(g => 'ቡድን ' + g).join(', ')}`);
-      if (r.saturdayTraining === true) lines.push('*የቅዳሜ ልምምድ:* አዎ');
-      if (r.saturdayTraining === false) lines.push(`*የቅዳሜ ልምምድ:* የለም${r.trainingReason ? ` – ${r.trainingReason}` : ''}`);
+      const lines = ['🎶 *የሙንሽን መዘምራን ሳምንታዊ የአምልኮ ፕሮግራም*', `*${choirShortDate(r.date)}*${time ? ` · ${time}` : ''}${r.place ? ` · 📍 ${r.place}` : ''}`, ''];
+      const add = (label, value) => { if (value) lines.push(`*${label}:* ${value}`); };
+      add('የአምልኮ መሪ', (a.leadSinger || []).map(p => p.name).join(', '));
+      add('የአምልኮ ቡድን', choirGroupText(a));
+      add('የኪ-ቦርድ ተጫዋች', (a.keyboard || []).map(p => p.name).join(', '));
+      add('ጊታር', (a.guitar || []).map(p => p.name).join(', '));
+      add('የቅዳሜ ፀሎት', choirSaturdayText(r));
+      add('የሶሎ ዝማሬ ቀን', (a.solo || []).map(p => p.name).join(', '));
       if (r.notes) lines.push('', r.notes);
       lines.push('', `${location.origin} → Choir Plan`);
-      return lines.join('\n').replace(/\n{3,}/g, '\n\n');
+      return lines.join('\n');
     }
 
     // WhatsApp has no way for a website to post into a group by itself, so this opens
@@ -1004,16 +1022,22 @@
       window.open(`https://wa.me/?text=${encodeURIComponent(choirRehearsalText(r))}`, '_blank', 'noopener');
     }
 
-    // Two-column table (activity | who); every activity is listed, "—" while unassigned.
-    function choirAssignmentsHtml(r) {
-      const a = r.assignments || {};
-      const rows = CHOIR_PEOPLE_ROLES.map(([key, label]) => [label, (a[key] || []).map(p => p.name).join(', ')]);
-      rows.push(['የዘማሪዎች ቡድን', (a.singerGroup || []).map(g => 'ቡድን ' + g).join(', ')]);
-      rows.push(['የቅዳሜ ልምምድ', r.saturdayTraining === true ? 'አዎ'
-        : r.saturdayTraining === false ? `የለም${r.trainingReason ? ` – ${r.trainingReason}` : ''}` : '']);
-      return `<table class="choir-roles-table">${rows
-        .map(([label, value]) => `<tr><th>${label}</th><td>${value ? escapeHtml(value) : '—'}</td></tr>`)
-        .join('')}</table>`;
+    // 2026-11-08 -> 08/11/2026, like the printed plan.
+    function choirShortDate(date) {
+      const [y, m, d] = date.split('-');
+      return `${d}/${m}/${y}`;
+    }
+
+    function choirGroupText(a) {
+      return (a.singerGroup || []).join('+');
+    }
+
+    // "No" shows as -የለም- (plus the reason), "Yes" as its details (or አዎ).
+    function choirSaturdayText(r) {
+      const details = r.trainingReason || '';
+      if (r.saturdayTraining === false) return `-የለም-${details ? ' ' + details : ''}`;
+      if (r.saturdayTraining === true) return details || 'አዎ';
+      return details;
     }
 
     function setChoirFormRoles(a, keepGroups) {
@@ -1048,7 +1072,7 @@
     }
 
     function toggleChoirReason() {
-      document.getElementById('choirTrainingReason').style.display = choirTrainingValue() === false ? '' : 'none';
+      // Details field stays visible for both answers (who leads, which date, or why not).
     }
 
     async function deleteChoirRehearsal(id) {
