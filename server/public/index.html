@@ -877,7 +877,7 @@ function upcomingSundays() {
       const playAllHtml = playableCount
         ? `<button class="keyboard-btn" id="sundayPlayAllBtn" style="margin-bottom:10px; padding:5px 12px; font-size:0.85rem;">▶ Play All (${playableCount})</button>`
         : '';
-      const orderBarHtml = canSort && items.length > 1
+      const orderBarHtml = canSort && items.length > 0
         ? `<div class="sunday-order-bar" id="sundayOrderBar">
             <span class="comment-hint" id="sundayOrderHint">To reorder, pick a song's new number (0 removes it), then click Update order.</span>
             <button class="keyboard-btn" id="sundayUpdateOrderBtn" style="display:none; padding:5px 12px; font-size:0.85rem;">Update order</button>
@@ -887,7 +887,7 @@ function upcomingSundays() {
       const positionOptions = index => '<option value="0">0 ✕</option>' + items.map((_, i) => `<option value="${i + 1}" ${i === index ? 'selected' : ''}>${i + 1}</option>`).join('');
       container.innerHTML = playAllHtml + orderBarHtml + items.map((item, index) => `
         <div class="sunday-song-row">
-          ${canSort && items.length > 1
+          ${canSort && items.length > 0
             ? `<select class="sunday-pos-select" data-index="${index}" title="New position" onchange="onSundayPositionChange()">${positionOptions(index)}</select>`
             : ''}
           ${item.youtubeVideoId

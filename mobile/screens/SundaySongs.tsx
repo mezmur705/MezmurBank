@@ -272,7 +272,7 @@ export default function SundaySongs() {
           <Text style={styles.downloadText}>Download Sunday Songs</Text>
         </TouchableOpacity>
       ) : null}
-      {canOrder && songs.length > 1 ? (
+      {canOrder && songs.length > 0 ? (
         orderChanged ? (
           <View style={styles.orderBar}>
             <TouchableOpacity style={styles.updateOrderButton} onPress={handleUpdateOrder} disabled={savingOrder} activeOpacity={0.7}>
