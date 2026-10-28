@@ -206,3 +206,52 @@ export async function exportToDrive(
   if (!response.ok) throw new Error(body?.error ?? 'Export failed.');
   return body;
 }
+
+export interface ChoirRehearsal {
+  id: number;
+  date: string; // YYYY-MM-DD
+  startTime: string | null; // HH:MM
+  endTime: string | null;
+  place: string | null;
+  notes: string | null;
+}
+
+export type ChoirRehearsalInput = Omit<ChoirRehearsal, 'id'>;
+
+// Upcoming rehearsals (signed-in users only); canEdit = admin or export rights.
+export async function getChoirPlan(accessToken: string): Promise<{ canEdit: boolean; rehearsals: ChoirRehearsal[] }> {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
+  const response = await fetch(`${apiUrl}/api/choir-plan`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body?.error ?? 'Could not load the choir plan.');
+  return body;
+}
+
+// Creates a rehearsal, or updates it when id is given.
+export async function saveChoirRehearsal(accessToken: string, input: ChoirRehearsalInput, id?: number): Promise<void> {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
+  const response = await fetch(`${apiUrl}/api/choir-plan${id ? `/${id}` : ''}`, {
+    method: id ? 'PUT' : 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error ?? 'Could not save the rehearsal.');
+  }
+}
+
+export async function deleteChoirRehearsal(accessToken: string, id: number): Promise<void> {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
+  const response = await fetch(`${apiUrl}/api/choir-plan/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error ?? 'Could not delete the rehearsal.');
+  }
+}

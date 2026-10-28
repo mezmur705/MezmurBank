@@ -858,6 +858,106 @@ app.post('/api/sunday-songs', requirePermission('canExport'), async (req, res) =
   }
 });
 
+// Choir Plan: upcoming rehearsals for signed-in users; admins and users with export rights
+// (the ones who plan Sunday Songs) add, edit and delete them.
+function requireSignedIn(req, res, next) {
+  getPermissions(req)
+    .then(permissions => {
+      if (!permissions.email) return res.status(401).json({ error: 'Please sign in to see the choir plan.' });
+      req.permissions = permissions;
+      next();
+    })
+    .catch(err => {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    });
+}
+
+// Returns the cleaned fields, or an error message for the first invalid one.
+function parseRehearsal(body) {
+  const date = (body?.date || '').toString();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(`${date}T00:00:00Z`).getTime())) {
+    return { error: 'Please choose a valid date.' };
+  }
+  const time = value => {
+    const t = (value || '').toString().trim();
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(t) ? t : t ? undefined : null;
+  };
+  const startTime = time(body?.startTime);
+  const endTime = time(body?.endTime);
+  if (startTime === undefined || endTime === undefined) return { error: 'Times must look like 18:30.' };
+  const text = (value, max) => ((value || '').toString().trim().slice(0, max) || null);
+  return { date, startTime, endTime, place: text(body?.place, 200), notes: text(body?.notes, 2000) };
+}
+
+const rehearsalJson = r => ({
+  id: r.id,
+  date: r.rehearsal_date instanceof Date ? r.rehearsal_date.toISOString().slice(0, 10) : String(r.rehearsal_date).slice(0, 10),
+  startTime: r.start_time,
+  endTime: r.end_time,
+  place: r.place,
+  notes: r.notes,
+});
+
+app.get('/api/choir-plan', requireSignedIn, async (req, res) => {
+  try {
+    const rows = await db`
+      SELECT id, rehearsal_date, start_time, end_time, place, notes
+      FROM choir_rehearsals
+      WHERE rehearsal_date >= CURRENT_DATE
+      ORDER BY rehearsal_date, start_time NULLS FIRST, id
+    `;
+    res.json({ canEdit: req.permissions.canExport, rehearsals: rows.map(rehearsalJson) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/choir-plan', requirePermission('canExport'), async (req, res) => {
+  const r = parseRehearsal(req.body);
+  if (r.error) return res.status(400).json({ error: r.error });
+  try {
+    const [row] = await db`
+      INSERT INTO choir_rehearsals (rehearsal_date, start_time, end_time, place, notes, created_by)
+      VALUES (${r.date}, ${r.startTime}, ${r.endTime}, ${r.place}, ${r.notes}, ${req.permissions.email})
+      RETURNING id, rehearsal_date, start_time, end_time, place, notes
+    `;
+    res.json(rehearsalJson(row));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/choir-plan/:id', requirePermission('canExport'), async (req, res) => {
+  const r = parseRehearsal(req.body);
+  if (r.error) return res.status(400).json({ error: r.error });
+  try {
+    const rows = await db`
+      UPDATE choir_rehearsals
+      SET rehearsal_date = ${r.date}, start_time = ${r.startTime}, end_time = ${r.endTime}, place = ${r.place}, notes = ${r.notes}
+      WHERE id = ${Number(req.params.id) || 0}
+      RETURNING id, rehearsal_date, start_time, end_time, place, notes
+    `;
+    if (!rows.length) return res.status(404).json({ error: 'Rehearsal not found.' });
+    res.json(rehearsalJson(rows[0]));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/choir-plan/:id', requirePermission('canExport'), async (req, res) => {
+  try {
+    await db`DELETE FROM choir_rehearsals WHERE id = ${Number(req.params.id) || 0}`;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/sunday-songs', async (req, res) => {
   try {
     const date = isValidSundayWithinMonth(req.query.date) ? req.query.date : nextSundayDate();

@@ -124,6 +124,21 @@ drop index if exists ux_sunday_songs_song_id;
 create unique index if not exists ux_sunday_songs_song_date on public.sunday_songs(song_id, sunday_date);
 create index if not exists ix_sunday_songs_date_position on public.sunday_songs(sunday_date, position);
 
+-- Choir rehearsal schedule ("Choir Plan"), shown to signed-in users. Only the API server
+-- reads/writes it (RLS on, no policies); admins and users with export rights edit it.
+create table if not exists public.choir_rehearsals (
+    id serial primary key,
+    rehearsal_date date not null,
+    start_time text,
+    end_time text,
+    place text,
+    notes text,
+    created_by text,
+    created_at timestamptz not null default now()
+);
+create index if not exists ix_choir_rehearsals_date on public.choir_rehearsals(rehearsal_date);
+alter table public.choir_rehearsals enable row level security;
+
 -- What non-admin users may do, granted by email on the web app's Manage Access page.
 -- Only the API server reads/writes this (RLS on, no policies), so the list isn't exposed
 -- to clients through Supabase directly. Admins (ADMIN_EMAILS env var) don't need a row.

@@ -117,6 +117,15 @@
     .sunday-song-title { font-weight: 600; color: #1a202c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sunday-song-singer { font-size: 0.78rem; color: #718096; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sunday-song-actions { display: flex; gap: 3px; flex-shrink: 0; }
+    .choir-form { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f7fafc; }
+    .choir-form-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .choir-form-row label { display: flex; flex-direction: column; font-size: 0.8rem; color: #4a5568; gap: 2px; }
+    .choir-form input, .choir-form textarea { padding: 6px 8px; border: 1px solid #cbd5e0; border-radius: 4px; font: inherit; }
+    .choir-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid #edf2f7; }
+    .choir-item-main { flex: 1; min-width: 0; }
+    .choir-item-date { font-weight: 600; color: #2b6cb0; }
+    .choir-item-place { color: #4a5568; font-size: 0.9rem; margin-top: 2px; }
+    .choir-item-notes { white-space: pre-line; font-size: 0.9rem; margin-top: 4px; }
     .sunday-order-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
     .sunday-pos-select { flex-shrink: 0; width: 58px; padding: 3px 2px; border: 1px solid #cbd5e0; border-radius: 4px; font-weight: 600; background: #fff; }
     .sunday-pos-select.changed { border: 2px solid #2b6cb0; }
@@ -254,6 +263,7 @@
     <div class="account-menu" id="accountMenu">
       <div class="account-menu-header" id="accountMenuHeader" style="display:none;"></div>
       <div class="account-menu-item" onclick="showSundaySongsView()">🗓️ Sunday Songs</div>
+      <div class="account-menu-item" onclick="showChoirPlanView()">🎶 Choir Plan</div>
       <div class="account-menu-item" onclick="showFavoritesView()">❤️ Favorites</div>
       <div class="account-menu-item" onclick="showNewSongsView()">🆕 New Songs</div>
       <div class="account-menu-item" onclick="showRecentlyViewedView()">🕘 Recently Viewed</div>
@@ -687,6 +697,133 @@
         document.getElementById('recentListContainer').innerHTML = `<p class="comment-hint">Could not load recently viewed songs: ${escapeHtml(err.message)}</p>`;
       }
     }
+    // Choir Plan: upcoming rehearsals for signed-in users; admins and export users edit them.
+    let choirPlanEditingId = null;
+    let choirRehearsals = [];
+    async function showChoirPlanView() {
+      backToSundaySongs = false;
+      closeAccountMenu();
+      hideNowPlayingBar();
+      if (!currentUser) { promptSignIn(); return; }
+      choirPlanEditingId = null;
+      const middleFrame = document.getElementById('middleFrame');
+      middleFrame.innerHTML = '<h2>🎶 Choir Plan</h2><div id="choirPlanForm"></div><div id="choirPlanList" style="margin-top:15px;"><p class="comment-hint">Loading…</p></div>';
+      await loadChoirPlan();
+    }
+
+    async function loadChoirPlan() {
+      const list = document.getElementById('choirPlanList');
+      if (!list) return;
+      try {
+        const res = await fetch('/api/choir-plan', { headers: authHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not load the choir plan.');
+        renderChoirPlanForm(data.canEdit);
+        choirRehearsals = data.rehearsals;
+        if (!choirRehearsals.length) { list.innerHTML = '<p class="comment-hint">No upcoming rehearsals planned yet.</p>'; return; }
+        list.innerHTML = choirRehearsals.map(r => {
+          const time = [r.startTime, r.endTime].filter(Boolean).join(' – ');
+          return `<div class="choir-item">
+            <div class="choir-item-main">
+              <div class="choir-item-date">${escapeHtml(formatSundayDate(r.date))}${time ? ` · ${escapeHtml(time)}` : ''}</div>
+              ${r.place ? `<div class="choir-item-place">📍 ${escapeHtml(r.place)}</div>` : ''}
+              ${r.notes ? `<div class="choir-item-notes">${escapeHtml(r.notes)}</div>` : ''}
+            </div>
+            ${data.canEdit ? `<div class="sunday-song-actions">
+              <button title="Edit" onclick="editChoirRehearsal(${r.id})">✏️</button>
+              <button class="destructive" title="Delete" onclick="deleteChoirRehearsal(${r.id})">✕</button>
+            </div>` : ''}
+          </div>`;
+        }).join('');
+      } catch (err) {
+        list.innerHTML = `<p class="comment-hint">${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    function renderChoirPlanForm(canEdit) {
+      const form = document.getElementById('choirPlanForm');
+      if (!form || !canEdit || form.dataset.ready) return;
+      form.dataset.ready = '1';
+      form.innerHTML = `<div class="choir-form">
+          <h4 id="choirFormTitle" style="margin:0;">Add a rehearsal</h4>
+          <div class="choir-form-row">
+            <label>Date <input type="date" id="choirDate"></label>
+            <label>From <input type="time" id="choirStart"></label>
+            <label>To <input type="time" id="choirEnd"></label>
+          </div>
+          <input type="text" id="choirPlace" placeholder="Place (e.g. church hall)" maxlength="200">
+          <textarea id="choirNotes" rows="2" placeholder="Notes (songs to practice, what to bring…)" maxlength="2000"></textarea>
+          <div style="display:flex; gap:8px;">
+            <button class="keyboard-btn" id="choirSaveBtn" onclick="saveChoirRehearsal()">Add</button>
+            <button class="copy-btn" id="choirCancelBtn" style="display:none;" onclick="resetChoirForm()">Cancel</button>
+          </div>
+        </div>`;
+    }
+
+    function resetChoirForm() {
+      choirPlanEditingId = null;
+      ['choirDate', 'choirStart', 'choirEnd', 'choirPlace', 'choirNotes'].forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('choirFormTitle').textContent = 'Add a rehearsal';
+      document.getElementById('choirSaveBtn').textContent = 'Add';
+      document.getElementById('choirCancelBtn').style.display = 'none';
+    }
+
+    function editChoirRehearsal(id) {
+      const r = choirRehearsals.find(item => item.id === id);
+      if (!r) return;
+      choirPlanEditingId = id;
+      document.getElementById('choirDate').value = r.date;
+      document.getElementById('choirStart').value = r.startTime || '';
+      document.getElementById('choirEnd').value = r.endTime || '';
+      document.getElementById('choirPlace').value = r.place || '';
+      document.getElementById('choirNotes').value = r.notes || '';
+      document.getElementById('choirFormTitle').textContent = 'Edit rehearsal';
+      document.getElementById('choirSaveBtn').textContent = 'Save';
+      document.getElementById('choirCancelBtn').style.display = '';
+      document.getElementById('choirPlanForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    async function saveChoirRehearsal() {
+      const body = {
+        date: document.getElementById('choirDate').value,
+        startTime: document.getElementById('choirStart').value,
+        endTime: document.getElementById('choirEnd').value,
+        place: document.getElementById('choirPlace').value,
+        notes: document.getElementById('choirNotes').value,
+      };
+      if (!body.date) { alert('Please choose a date.'); return; }
+      const btn = document.getElementById('choirSaveBtn');
+      btn.disabled = true;
+      try {
+        const res = await fetch(choirPlanEditingId ? `/api/choir-plan/${choirPlanEditingId}` : '/api/choir-plan', {
+          method: choirPlanEditingId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not save.');
+        resetChoirForm();
+        await loadChoirPlan();
+      } catch (err) {
+        alert('Could not save the rehearsal: ' + err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function deleteChoirRehearsal(id) {
+      if (!confirm('Delete this rehearsal?')) return;
+      try {
+        const res = await fetch(`/api/choir-plan/${id}`, { method: 'DELETE', headers: authHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not delete.');
+        if (choirPlanEditingId === id) resetChoirForm();
+        await loadChoirPlan();
+      } catch (err) {
+        alert('Could not delete the rehearsal: ' + err.message);
+      }
+    }
+
     function showNewSongsView() {
       backToSundaySongs = false;
       closeAccountMenu();

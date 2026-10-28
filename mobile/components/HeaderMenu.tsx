@@ -28,6 +28,15 @@ export default function HeaderMenu() {
     navigation.navigate('NewSongs');
   };
 
+  const goToChoirPlan = () => {
+    setOpen(false);
+    if (!user) {
+      promptSignIn();
+      return;
+    }
+    navigation.navigate('ChoirPlan');
+  };
+
   const goToSundaySongs = () => {
     setOpen(false);
     navigation.navigate('SundaySongs');
@@ -42,6 +51,7 @@ export default function HeaderMenu() {
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
           <View style={styles.menu}>
             <MenuItem icon="event" label="Sunday Songs" onPress={goToSundaySongs} />
+            <MenuItem icon="queue-music" label="Choir Plan" onPress={goToChoirPlan} />
             <MenuItem icon="favorite-border" label="Favorites" onPress={() => goToAccountScreen('Favorites')} />
             <MenuItem icon="fiber-new" label="New Songs" onPress={goToNewSongs} />
             <MenuItem icon="history" label="Recently Viewed" onPress={() => goToAccountScreen('RecentlyViewed')} />

@@ -36,7 +36,8 @@
       "expo-status-bar",
       "@react-native-google-signin/google-signin",
       "expo-web-browser",
-      "./plugins/withAdiRegistration.js"
+      "./plugins/withAdiRegistration.js",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "eas": {
