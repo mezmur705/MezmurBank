@@ -164,6 +164,8 @@
     .sunday-add-result:hover { background: #edf2f7; }
     .welcome-hero { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 15px; display: block; }
     .right-frame { width: 30%; border-right: none; background: #fafafa; }
+    body.choir-wide .right-frame { display: none; }
+    body.choir-wide .middle-frame { width: auto; flex: 1; border-right: none; }
     .youtube-container { width: 100%; height: 250px; background: #000; border-radius: 6px; overflow: hidden; margin-top: 10px; }
     .youtube-manual-row { display: flex; gap: 6px; margin-top: 4px; }
     .youtube-manual-row input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 0.82rem; }
@@ -693,6 +695,7 @@
 
     async function showFavoritesView() {
       backToSundaySongs = false;
+      document.body.classList.remove('choir-wide');
       closeAccountMenu();
       hideNowPlayingBar();
       if (!currentUser) { promptSignIn(); return; }
@@ -708,6 +711,7 @@
     }
     async function showRecentlyViewedView() {
       backToSundaySongs = false;
+      document.body.classList.remove('choir-wide');
       closeAccountMenu();
       hideNowPlayingBar();
       if (!currentUser) { promptSignIn(); return; }
@@ -732,6 +736,8 @@
     const CHOIR_PEOPLE_ROLES = [['leadSinger', 'የአምልኮ መሪ'], ['keyboard', 'የኪ-ቦርድ ተጫዋች'], ['guitar', 'ጊታር'], ['solo', 'የሶሎ ዝማሬ']];
     async function showChoirPlanView() {
       backToSundaySongs = false;
+      // The plan table needs room: take over the right column (video/OpenSong) while it's open.
+      document.body.classList.add('choir-wide');
       closeAccountMenu();
       hideNowPlayingBar();
       if (!currentUser) { promptSignIn(); return; }
@@ -1090,6 +1096,7 @@
 
     function showNewSongsView() {
       backToSundaySongs = false;
+      document.body.classList.remove('choir-wide');
       closeAccountMenu();
       hideNowPlayingBar();
       const middleFrame = document.getElementById('middleFrame');
@@ -1131,6 +1138,7 @@ function upcomingSundays() {
       hideNowPlayingBar();
       sundaySelectedDate = date || upcomingSundays()[0];
       backToSundaySongs = true;
+      document.body.classList.remove('choir-wide');
       const middleFrame = document.getElementById('middleFrame');
       const dates = upcomingSundays();
       if (!dates.includes(sundaySelectedDate)) dates.unshift(sundaySelectedDate);
@@ -1484,6 +1492,7 @@ function upcomingSundays() {
     }
     function showWelcome() {
       backToSundaySongs = false;
+      document.body.classList.remove('choir-wide');
       hideNowPlayingBar();
       const middleFrame = document.getElementById('middleFrame');
       middleFrame.innerHTML = WELCOME_HTML;
@@ -1647,6 +1656,7 @@ function upcomingSundays() {
     function displaySingerSongs(singerName) {
       const singer = mezmurData.find(item => item.singer === singerName); if (!singer) return;
       backToSundaySongs = false;
+      document.body.classList.remove('choir-wide');
       hideNowPlayingBar();
       const middleFrame = document.getElementById('middleFrame');
       const playableCount = singer.songs.filter(s => s.youtubeVideoId).length;
@@ -1670,6 +1680,7 @@ function upcomingSundays() {
     }
 
     function displayLyric(song, singerName) {
+      document.body.classList.remove('choir-wide');
       markSelectedSong(song.id);
       showNowPlayingBar(song, singerName);
       const query = document.getElementById('searchAll').value;
@@ -1912,6 +1923,7 @@ function upcomingSundays() {
     // OR song title/lyrics, whichever hits first.
     function filterAll() {
       backToSundaySongs = false;
+      document.body.classList.remove('choir-wide');
       const rawQuery = document.getElementById('searchAll').value;
       const query = rawQuery.toLowerCase().trim();
       const middleFrame = document.getElementById('middleFrame');
