@@ -785,7 +785,7 @@
         const names = (a, key) => escapeHtml((a[key] || []).map(p => p.name).join(', '));
         list.innerHTML = `<h3 class="choir-plan-title">የሙንሽን መዘምራን ሳምንታዊ የአምልኮ ፕሮግራም</h3>
           <div class="choir-plan-scroll"><table class="choir-plan-table">
-            <tr><th>የአምልኮው ቀን</th><th>የአምልኮ መሪ</th><th>የአምልኮ ቡድን</th><th>የኪ-ቦርድ ተጫዋች</th><th>ጊታር</th><th>የቅዳሜ ፀሎት</th><th>የሶሎ ዝማሬ ቀን</th><th>📺 የቀጥታ ስርጭት</th><th></th></tr>
+            <tr><th>የአምልኮው ቀን</th><th>የአምልኮ መሪ</th><th>የአምልኮ ቡድን</th><th>የኪ-ቦርድ ተጫዋች</th><th>ጊታር</th><th>የቅዳሜ ፀሎት</th><th>የሶሎ ዝማሬ ቀን</th><th>ሰባኪ</th><th>የስብከቱ ርዕስ</th><th>📺 የቀጥታ ስርጭት</th><th></th></tr>
             ${choirRehearsals.map(r => {
               const a = r.assignments || {};
               const time = [r.startTime, r.endTime].filter(Boolean).join('–');
@@ -800,6 +800,8 @@
                 <td>${names(a, 'guitar')}</td>
                 <td>${escapeHtml(choirSaturdayText(r))}</td>
                 <td>${names(a, 'solo')}</td>
+                <td>${escapeHtml(a.preacher || '')}</td>
+                <td>${escapeHtml(a.sermonTitle || '')}</td>
                 <td>${choirLivestreamLink(r)}</td>
                 <td class="choir-plan-actions"><div class="sunday-song-actions">
                   <button class="choir-wa-btn" title="Send to WhatsApp" onclick="sendChoirRehearsalToWhatsApp(${r.id})">${WHATSAPP_ICON_SVG}</button>
@@ -827,6 +829,8 @@
             <label>To <input type="time" id="choirEnd" value="${CHOIR_DEFAULTS.end}"></label>
           </div>
           <input type="text" id="choirPlace" placeholder="Place" maxlength="200" value="${CHOIR_DEFAULTS.place}">
+          <input type="text" id="choirPreacher" placeholder="ሰባኪ (Prediger)" maxlength="200">
+          <input type="text" id="choirSermonTitle" placeholder="የስብከቱ ርዕስ (Predigt-Titel)" maxlength="300">
           <div id="choirPickers"></div>
           <div class="choir-form-inline"><span>የአምልኮ ቡድን:</span>
             <label><input type="checkbox" id="choirGroupA"> ቡድን A</label>
@@ -959,7 +963,7 @@
 
     function resetChoirForm() {
       choirPlanEditingId = null;
-      ['choirDate', 'choirNotes', 'choirTrainingReason', 'choirLivestream'].forEach(id => { document.getElementById(id).value = ''; });
+      ['choirDate', 'choirNotes', 'choirTrainingReason', 'choirLivestream', 'choirPreacher', 'choirSermonTitle'].forEach(id => { document.getElementById(id).value = ''; });
       document.getElementById('choirStart').value = CHOIR_DEFAULTS.start;
       document.getElementById('choirEnd').value = CHOIR_DEFAULTS.end;
       document.getElementById('choirPlace').value = CHOIR_DEFAULTS.place;
@@ -992,6 +996,8 @@
       });
       document.getElementById('choirTrainingReason').value = r.trainingReason || '';
       document.getElementById('choirLivestream').value = r.livestreamUrl || '';
+      document.getElementById('choirPreacher').value = (r.assignments || {}).preacher || '';
+      document.getElementById('choirSermonTitle').value = (r.assignments || {}).sermonTitle || '';
       toggleChoirReason();
       document.getElementById('choirFormTitle').textContent = '✏️ ሳምንታዊ የአምልኮ ፕሮግራም';
       document.getElementById('choirSaveBtn').textContent = 'Save';
@@ -1043,6 +1049,8 @@
       add('ጊታር', (a.guitar || []).map(p => p.name).join(', '));
       add('የቅዳሜ ፀሎት', choirSaturdayText(r));
       add('የሶሎ ዝማሬ ቀን', (a.solo || []).map(p => p.name).join(', '));
+      add('ሰባኪ', a.preacher || '');
+      add('የስብከቱ ርዕስ', a.sermonTitle || '');
       add('📺 የቀጥታ ስርጭት', r.livestreamUrl || '');
       if (r.notes) lines.push('', r.notes);
       lines.push('', `${location.origin} → Choir Plan`);
@@ -1071,6 +1079,8 @@
         ['ጊታር', names('guitar')],
         ['የቅዳሜ ፀሎት', choirSaturdayText(r)],
         ['የሶሎ ዝማሬ ቀን', names('solo')],
+        ['ሰባኪ', a.preacher || ''],
+        ['የስብከቱ ርዕስ', a.sermonTitle || ''],
       ];
       return `<div class="choir-card">
         <div class="choir-card-head">
@@ -1132,6 +1142,8 @@
           .map(box => ({ memberId: Number(box.value), ...(box.dataset.email ? { email: box.dataset.email } : {}), name: box.dataset.name }));
       });
       roles.singerGroup = ['A', 'B'].filter(g => document.getElementById('choirGroup' + g)?.checked);
+      roles.preacher = document.getElementById('choirPreacher')?.value.trim() || '';
+      roles.sermonTitle = document.getElementById('choirSermonTitle')?.value.trim() || '';
       return roles;
     }
 

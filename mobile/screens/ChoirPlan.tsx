@@ -74,6 +74,8 @@ const PLAN_COLUMNS: { title: string; width: number; value: (r: ChoirRehearsal) =
   { title: 'ጊታር', width: 90, value: r => peopleText(r, 'guitar') },
   { title: 'የቅዳሜ ፀሎት', width: 160, value: saturdayText },
   { title: 'የሶሎ ዝማሬ ቀን', width: 110, value: r => peopleText(r, 'solo') },
+  { title: 'ሰባኪ', width: 120, value: r => r.assignments?.preacher ?? '' },
+  { title: 'የስብከቱ ርዕስ', width: 160, value: r => r.assignments?.sermonTitle ?? '' },
 ];
 
 // Choir rehearsal schedule. Everyone signed in sees the upcoming rehearsals; admins and users
@@ -102,6 +104,8 @@ export default function ChoirPlan() {
   const [training, setTraining] = useState<boolean | null>(null);
   const [trainingReason, setTrainingReason] = useState('');
   const [livestreamUrl, setLivestreamUrl] = useState('');
+  const [preacher, setPreacher] = useState('');
+  const [sermonTitle, setSermonTitle] = useState('');
   const [pickerRole, setPickerRole] = useState<PeopleRole | null>(null);
 
   const load = useCallback(() => {
@@ -141,6 +145,8 @@ export default function ChoirPlan() {
     setTraining(null);
     setTrainingReason('');
     setLivestreamUrl('');
+    setPreacher('');
+    setSermonTitle('');
   };
 
   const startEdit = (r: ChoirRehearsal) => {
@@ -160,6 +166,8 @@ export default function ChoirPlan() {
     setTraining(r.saturdayTraining);
     setTrainingReason(r.trainingReason ?? '');
     setLivestreamUrl(r.livestreamUrl ?? '');
+    setPreacher(r.assignments?.preacher ?? '');
+    setSermonTitle(r.assignments?.sermonTitle ?? '');
   };
 
   const toggleGroup = (g: 'A' | 'B') =>
@@ -210,7 +218,7 @@ export default function ChoirPlan() {
           endTime,
           place: place.trim() || null,
           notes: notes.trim() || null,
-          assignments: { ...roles, singerGroup: groups },
+          assignments: { ...roles, singerGroup: groups, preacher: preacher.trim() || null, sermonTitle: sermonTitle.trim() || null },
           saturdayTraining: training,
           trainingReason: trainingReason.trim() || null,
           livestreamUrl: livestreamUrl.trim() || null,
@@ -244,6 +252,8 @@ export default function ChoirPlan() {
     add('ጊታር', peopleText(r, 'guitar'));
     add('የቅዳሜ ፀሎት', saturdayText(r));
     add('የሶሎ ዝማሬ ቀን', peopleText(r, 'solo'));
+    add('ሰባኪ', r.assignments?.preacher ?? '');
+    add('የስብከቱ ርዕስ', r.assignments?.sermonTitle ?? '');
     add('📺 የቀጥታ ስርጭት', r.livestreamUrl ?? '');
     if (r.notes) lines.push('', r.notes);
     lines.push('', `${process.env.EXPO_PUBLIC_API_URL ?? 'https://mezmurify.com'} → Choir Plan`);
@@ -339,6 +349,22 @@ export default function ChoirPlan() {
         placeholder="Place"
         placeholderTextColor={colors.textTertiary}
         maxLength={200}
+      />
+      <TextInput
+        style={styles.input}
+        value={preacher}
+        onChangeText={setPreacher}
+        placeholder="ሰባኪ (Prediger)"
+        placeholderTextColor={colors.textTertiary}
+        maxLength={200}
+      />
+      <TextInput
+        style={styles.input}
+        value={sermonTitle}
+        onChangeText={setSermonTitle}
+        placeholder="የስብከቱ ርዕስ (Predigt-Titel)"
+        placeholderTextColor={colors.textTertiary}
+        maxLength={300}
       />
       {PEOPLE_ROLES.map(([key, label]) => (
         <TouchableOpacity key={key} style={styles.roleButton} onPress={() => setPickerRole(key)}>

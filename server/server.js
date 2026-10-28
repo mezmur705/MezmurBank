@@ -904,6 +904,9 @@ function parseRehearsal(body) {
     guitar: people(a.guitar),
     solo: people(a.solo),
     singerGroup: (Array.isArray(a.singerGroup) ? a.singerGroup : []).filter(g => g === 'A' || g === 'B'),
+    // Preacher (Prediger): free text, often a pastor or guest rather than a choir member.
+    preacher: text(a.preacher, 200),
+    sermonTitle: text(a.sermonTitle, 300),
   };
   const training = body?.saturdayTraining;
   const saturdayTraining = training === true || training === false ? training : null;

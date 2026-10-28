@@ -234,6 +234,8 @@ export interface ChoirAssignments {
   guitar?: ChoirPerson[];
   solo?: ChoirPerson[];
   singerGroup?: ('A' | 'B')[];
+  preacher?: string | null; // Prediger, free text
+  sermonTitle?: string | null; // title of the sermon
 }
 
 export interface ChoirRehearsal {
