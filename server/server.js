@@ -887,7 +887,24 @@ function parseRehearsal(body) {
   const endTime = time(body?.endTime);
   if (startTime === undefined || endTime === undefined) return { error: 'Times must look like 18:30.' };
   const text = (value, max) => ((value || '').toString().trim().slice(0, max) || null);
-  return { date, startTime, endTime, place: text(body?.place, 200), notes: text(body?.notes, 2000) };
+  // People roles hold sign-in users ({ email, name }); the singer group is Group A and/or B.
+  const people = list => (Array.isArray(list) ? list : [])
+    .filter(p => p && typeof p.email === 'string' && p.email)
+    .slice(0, 30)
+    .map(p => ({ email: p.email.toLowerCase().slice(0, 200), name: (p.name || p.email).toString().slice(0, 200) }));
+  const a = body?.assignments || {};
+  const assignments = {
+    leadSinger: people(a.leadSinger),
+    keyboard: people(a.keyboard),
+    guitar: people(a.guitar),
+    singerGroup: (Array.isArray(a.singerGroup) ? a.singerGroup : []).filter(g => g === 'A' || g === 'B'),
+  };
+  const training = body?.saturdayTraining;
+  const saturdayTraining = training === true || training === false ? training : null;
+  return {
+    date, startTime, endTime, place: text(body?.place, 200), notes: text(body?.notes, 2000),
+    assignments, saturdayTraining, trainingReason: text(body?.trainingReason, 500),
+  };
 }
 
 const rehearsalJson = r => ({
@@ -897,12 +914,15 @@ const rehearsalJson = r => ({
   endTime: r.end_time,
   place: r.place,
   notes: r.notes,
+  assignments: r.assignments || {},
+  saturdayTraining: r.saturday_training,
+  trainingReason: r.training_reason,
 });
 
 app.get('/api/choir-plan', requireSignedIn, async (req, res) => {
   try {
     const rows = await db`
-      SELECT id, rehearsal_date, start_time, end_time, place, notes
+      SELECT id, rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason
       FROM choir_rehearsals
       WHERE rehearsal_date >= CURRENT_DATE
       ORDER BY rehearsal_date, start_time NULLS FIRST, id
@@ -914,14 +934,32 @@ app.get('/api/choir-plan', requireSignedIn, async (req, res) => {
   }
 });
 
+// Sign-in names to choose Lead Singer / Keyboard / Guitar from (planners only).
+app.get('/api/choir-plan/members', requirePermission('canExport'), async (req, res) => {
+  try {
+    const rows = await db`
+      SELECT lower(u.email) AS email,
+             coalesce(nullif(u.raw_user_meta_data->>'full_name', ''), nullif(u.raw_user_meta_data->>'name', ''), nullif(p.display_name, ''), u.email) AS name
+      FROM auth.users u
+      LEFT JOIN public.profiles p ON p.id = u.id
+      WHERE u.email IS NOT NULL
+      ORDER BY 2
+    `;
+    res.json(rows.map(r => ({ email: r.email, name: r.name })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/choir-plan', requirePermission('canExport'), async (req, res) => {
   const r = parseRehearsal(req.body);
   if (r.error) return res.status(400).json({ error: r.error });
   try {
     const [row] = await db`
-      INSERT INTO choir_rehearsals (rehearsal_date, start_time, end_time, place, notes, created_by)
-      VALUES (${r.date}, ${r.startTime}, ${r.endTime}, ${r.place}, ${r.notes}, ${req.permissions.email})
-      RETURNING id, rehearsal_date, start_time, end_time, place, notes
+      INSERT INTO choir_rehearsals (rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason, created_by)
+      VALUES (${r.date}, ${r.startTime}, ${r.endTime}, ${r.place}, ${r.notes}, ${db.json(r.assignments)}, ${r.saturdayTraining}, ${r.trainingReason}, ${req.permissions.email})
+      RETURNING id, rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason
     `;
     res.json(rehearsalJson(row));
   } catch (err) {
@@ -936,9 +974,10 @@ app.put('/api/choir-plan/:id', requirePermission('canExport'), async (req, res) 
   try {
     const rows = await db`
       UPDATE choir_rehearsals
-      SET rehearsal_date = ${r.date}, start_time = ${r.startTime}, end_time = ${r.endTime}, place = ${r.place}, notes = ${r.notes}
+      SET rehearsal_date = ${r.date}, start_time = ${r.startTime}, end_time = ${r.endTime}, place = ${r.place}, notes = ${r.notes},
+          assignments = ${db.json(r.assignments)}, saturday_training = ${r.saturdayTraining}, training_reason = ${r.trainingReason}
       WHERE id = ${Number(req.params.id) || 0}
-      RETURNING id, rehearsal_date, start_time, end_time, place, notes
+      RETURNING id, rehearsal_date, start_time, end_time, place, notes, assignments, saturday_training, training_reason
     `;
     if (!rows.length) return res.status(404).json({ error: 'Rehearsal not found.' });
     res.json(rehearsalJson(rows[0]));

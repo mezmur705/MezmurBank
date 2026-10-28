@@ -207,6 +207,18 @@ export async function exportToDrive(
   return body;
 }
 
+export interface ChoirMember {
+  email: string;
+  name: string;
+}
+
+export interface ChoirAssignments {
+  leadSinger?: ChoirMember[];
+  keyboard?: ChoirMember[];
+  guitar?: ChoirMember[];
+  singerGroup?: ('A' | 'B')[];
+}
+
 export interface ChoirRehearsal {
   id: number;
   date: string; // YYYY-MM-DD
@@ -214,6 +226,9 @@ export interface ChoirRehearsal {
   endTime: string | null;
   place: string | null;
   notes: string | null;
+  assignments: ChoirAssignments;
+  saturdayTraining: boolean | null; // null = not decided
+  trainingReason: string | null;
 }
 
 export type ChoirRehearsalInput = Omit<ChoirRehearsal, 'id'>;
@@ -225,6 +240,16 @@ export async function getChoirPlan(accessToken: string): Promise<{ canEdit: bool
   const response = await fetch(`${apiUrl}/api/choir-plan`, { headers: { Authorization: `Bearer ${accessToken}` } });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body?.error ?? 'Could not load the choir plan.');
+  return body;
+}
+
+// Sign-in names to assign to roles (planners only).
+export async function getChoirMembers(accessToken: string): Promise<ChoirMember[]> {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL. Set it in mobile/.env.');
+  const response = await fetch(`${apiUrl}/api/choir-plan/members`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const body = await response.json().catch(() => []);
+  if (!response.ok) throw new Error(body?.error ?? 'Could not load the members.');
   return body;
 }
 

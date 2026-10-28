@@ -138,6 +138,11 @@ create table if not exists public.choir_rehearsals (
 );
 create index if not exists ix_choir_rehearsals_date on public.choir_rehearsals(rehearsal_date);
 alter table public.choir_rehearsals enable row level security;
+-- Who serves: { leadSinger: [{email,name}], keyboard: [...], guitar: [...], singerGroup: ['A','B'] }.
+alter table public.choir_rehearsals add column if not exists assignments jsonb not null default '{}'::jsonb;
+-- Whether Saturday training happens that week (null = not decided), with an optional reason.
+alter table public.choir_rehearsals add column if not exists saturday_training boolean;
+alter table public.choir_rehearsals add column if not exists training_reason text;
 
 -- What non-admin users may do, granted by email on the web app's Manage Access page.
 -- Only the API server reads/writes this (RLS on, no policies), so the list isn't exposed
