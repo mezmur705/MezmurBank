@@ -37,7 +37,16 @@
       "@react-native-google-signin/google-signin",
       "expo-web-browser",
       "./plugins/withAdiRegistration.js",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
